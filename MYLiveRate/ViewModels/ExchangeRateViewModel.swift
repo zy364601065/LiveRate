@@ -19,19 +19,47 @@ final class ExchangeRateViewModel: ObservableObject {
     @Published var isRecognizingHolding = false
     @Published var holdingMessage: String?
     @Published var holdingRecords: [HoldingRecord] = []
+    @Published var liveStockQuote: StockQuote?
+    @Published var stockErrorMessage: String?
+    @Published var intradayPricePoints: [IntradayPricePoint] = []
+    @Published var intradayErrorMessage: String?
+    @Published var holdingLiveStockQuotes: [HoldingLiveStockQuote] = []
+    @Published var holdingStockErrorMessage: String?
+    @Published var stockSymbol: String = "AAPL" {
+        didSet {
+            let normalized = stockSymbol
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
+            if normalized != stockSymbol {
+                stockSymbol = normalized
+                return
+            }
+            persistStockSymbol()
+        }
+    }
+    @Published var alphaVantageAPIKey: String = "demo" {
+        didSet {
+            persistAlphaVantageAPIKey()
+        }
+    }
 
     private let service = ExchangeRateService()
+    private let alphaVantageService = AlphaVantageService()
     private let ocrService = DollarOCRService()
     private let holdingsOCRService = HoldingsOCRService()
     private let uploadRecordsStorageKey = "myliverate.upload_records.v1"
     private let latestThumbnailStorageKey = "myliverate.latest_upload_thumbnail.v1"
     private let holdingRecordsStorageKey = "myliverate.holding_records.v1"
+    private let stockSymbolStorageKey = "myliverate.stock_symbol.v1"
+    private let alphaVantageAPIKeyStorageKey = "myliverate.alphavantage_api_key.v1"
     private static let usMarketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
 
     init() {
         uploadRecords = loadPersistedUploadRecords()
         latestUploadThumbnailData = UserDefaults.standard.data(forKey: latestThumbnailStorageKey)
         holdingRecords = loadPersistedHoldingRecords()
+        stockSymbol = loadPersistedStockSymbol()
+        alphaVantageAPIKey = loadPersistedAlphaVantageAPIKey()
     }
 
     var targetCurrencies: [Currency] {
@@ -63,7 +91,8 @@ final class ExchangeRateViewModel: ObservableObject {
         baseCurrency = currency
     }
 
-    func refresh() async {
+    func refresh(includeStocks: Bool = false) async {
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
 
@@ -75,7 +104,25 @@ final class ExchangeRateViewModel: ObservableObject {
             errorMessage = "汇率更新失败，请稍后重试"
         }
 
+        if includeStocks {
+            await performStockRefresh()
+        }
         isLoading = false
+    }
+
+    func refreshStocksOnly() async {
+        guard !isLoading else { return }
+        isLoading = true
+        await performStockRefresh()
+        isLoading = false
+    }
+
+    func updateStockSymbol(_ symbol: String) {
+        stockSymbol = symbol
+    }
+
+    func updateAlphaVantageAPIKey(_ key: String) {
+        alphaVantageAPIKey = key
     }
 
     func recognizeUSDAmount(from imageData: Data) async {
@@ -386,5 +433,147 @@ final class ExchangeRateViewModel: ObservableObject {
         }
 
         return records.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    private func refreshStockQuote() async {
+        do {
+            let quote = try await alphaVantageService.fetchQuote(
+                symbol: stockSymbol,
+                apiKey: alphaVantageAPIKey
+            )
+            liveStockQuote = quote
+            stockErrorMessage = nil
+        } catch {
+            stockErrorMessage = (error as? LocalizedError)?.errorDescription ?? "股票行情更新失败，请稍后重试"
+        }
+    }
+
+    private func performStockRefresh() async {
+        await refreshStockQuote()
+        await refreshIntradayPriceSeries()
+        await refreshHoldingStockQuotes()
+    }
+
+    private func refreshIntradayPriceSeries() async {
+        do {
+            let points = try await alphaVantageService.fetchIntradaySeries(
+                symbol: stockSymbol,
+                apiKey: alphaVantageAPIKey
+            )
+            intradayPricePoints = points
+            intradayErrorMessage = nil
+        } catch {
+            intradayPricePoints = []
+            intradayErrorMessage = (error as? LocalizedError)?.errorDescription ?? "日内走势更新失败，请稍后重试"
+        }
+    }
+
+    func intradayPoints(for filter: TradingSessionFilter) -> [IntradayPricePoint] {
+        switch filter {
+        case .all:
+            return intradayPricePoints
+        case .overnight:
+            return intradayPricePoints.filter { $0.session == .overnight }
+        case .preMarket:
+            return intradayPricePoints.filter { $0.session == .preMarket }
+        case .regular:
+            return intradayPricePoints.filter { $0.session == .regular }
+        case .afterHours:
+            return intradayPricePoints.filter { $0.session == .afterHours }
+        }
+    }
+
+    private func refreshHoldingStockQuotes() async {
+        let targets = uniqueHoldingTargets()
+        guard !targets.isEmpty else {
+            holdingLiveStockQuotes = []
+            holdingStockErrorMessage = "持仓中暂无可查询的股票代码"
+            return
+        }
+
+        var fetchedItems: [HoldingLiveStockQuote] = []
+        var failedCount = 0
+        var errorCountByMessage: [String: Int] = [:]
+
+        for target in targets {
+            do {
+                let quote = try await alphaVantageService.fetchQuote(
+                    symbol: target.symbol,
+                    apiKey: alphaVantageAPIKey
+                )
+                fetchedItems.append(
+                    HoldingLiveStockQuote(
+                        stockName: target.name,
+                        symbol: target.symbol,
+                        quote: quote
+                    )
+                )
+            } catch {
+                failedCount += 1
+                let message = (error as? LocalizedError)?.errorDescription ?? "未知错误"
+                errorCountByMessage[message, default: 0] += 1
+            }
+        }
+
+        holdingLiveStockQuotes = fetchedItems.sorted { $0.symbol < $1.symbol }
+        let dominantErrorMessage = errorCountByMessage.max(by: { $0.value < $1.value })?.key
+
+        if fetchedItems.isEmpty {
+            if let dominantErrorMessage {
+                holdingStockErrorMessage = dominantErrorMessage
+            } else {
+                holdingStockErrorMessage = "持仓股票行情更新失败，请稍后重试"
+            }
+        } else if failedCount > 0 {
+            if let dominantErrorMessage {
+                holdingStockErrorMessage = dominantErrorMessage
+            } else {
+                holdingStockErrorMessage = "部分持仓股票更新失败，请检查股票代码"
+            }
+        } else {
+            holdingStockErrorMessage = nil
+        }
+    }
+
+    private func uniqueHoldingTargets() -> [(name: String, symbol: String)] {
+        var seenSymbols = Set<String>()
+        var targets: [(name: String, symbol: String)] = []
+
+        for record in holdingRecords {
+            guard let code = record.stockCode?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased(),
+                  !code.isEmpty else {
+                continue
+            }
+            if seenSymbols.contains(code) {
+                continue
+            }
+            seenSymbols.insert(code)
+            targets.append((name: record.stockName, symbol: code))
+        }
+
+        return targets
+    }
+
+    private func persistStockSymbol() {
+        UserDefaults.standard.set(stockSymbol, forKey: stockSymbolStorageKey)
+    }
+
+    private func loadPersistedStockSymbol() -> String {
+        let stored = UserDefaults.standard.string(forKey: stockSymbolStorageKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        return (stored?.isEmpty == false) ? stored! : "AAPL"
+    }
+
+    private func persistAlphaVantageAPIKey() {
+        UserDefaults.standard.set(alphaVantageAPIKey, forKey: alphaVantageAPIKeyStorageKey)
+    }
+
+    private func loadPersistedAlphaVantageAPIKey() -> String {
+        let stored = UserDefaults.standard.string(forKey: alphaVantageAPIKeyStorageKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (stored?.isEmpty == false) ? stored! : "demo"
     }
 }

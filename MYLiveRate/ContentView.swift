@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 import PhotosUI
 
 struct ContentView: View {
@@ -7,8 +6,6 @@ struct ContentView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedHoldingPhotoItem: PhotosPickerItem?
     @AppStorage("myliverate.app_theme") private var appThemeRawValue: String = AppTheme.system.rawValue
-
-    private let refreshTimer = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
 
     private var preferredScheme: ColorScheme? {
         switch AppTheme(rawValue: appThemeRawValue) ?? .system {
@@ -31,12 +28,16 @@ struct ContentView: View {
                 HoldingsTabView(viewModel: viewModel, selectedHoldingPhotoItem: $selectedHoldingPhotoItem)
             }
 
+            Tab("实时", systemImage: "chart.line.uptrend.xyaxis") {
+                LiveStockTabView(viewModel: viewModel)
+            }
+
             Tab("统计", systemImage: "calendar") {
                 StatsDashboardView(viewModel: viewModel)
             }
 
             Tab("设置", systemImage: "gearshape") {
-                SettingsTabView()
+                SettingsTabView(viewModel: viewModel)
             }
         }
         .preferredColorScheme(preferredScheme)
@@ -64,11 +65,6 @@ struct ContentView: View {
                     return
                 }
                 await viewModel.recognizeHolding(from: data)
-            }
-        }
-        .onReceive(refreshTimer) { _ in
-            Task {
-                await viewModel.refresh()
             }
         }
     }

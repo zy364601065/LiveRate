@@ -7,6 +7,7 @@ final class ExchangeRateService {
         }
 
         let (data, response) = try await URLSession.shared.data(from: url)
+        Self.logJSONResponse(data, endpoint: "汇率接口 /latest/\(base.rawValue)")
         guard let httpResponse = response as? HTTPURLResponse,
               200..<300 ~= httpResponse.statusCode else {
             throw URLError(.badServerResponse)
@@ -27,5 +28,20 @@ final class ExchangeRateService {
             updatedAt: Date(timeIntervalSince1970: decoded.time_last_update_unix),
             rates: mappedRates
         )
+    }
+
+    private static func logJSONResponse(_ data: Data, endpoint: String) {
+        if let object = try? JSONSerialization.jsonObject(with: data),
+           let prettyData = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted]),
+           let prettyText = String(data: prettyData, encoding: .utf8) {
+            print("[接口响应] \(endpoint)\n\(prettyText)")
+            return
+        }
+
+        if let rawText = String(data: data, encoding: .utf8) {
+            print("[接口响应] \(endpoint)\n\(rawText)")
+        } else {
+            print("[接口响应] \(endpoint)\n<无法解析为字符串>")
+        }
     }
 }

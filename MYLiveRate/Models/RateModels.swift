@@ -167,3 +167,55 @@ struct RateSnapshot {
     let updatedAt: Date
     let rates: [Currency: Double]
 }
+
+struct StockQuote {
+    let symbol: String
+    let price: Double
+    let previousClose: Double
+    let change: Double
+    let changePercent: Double
+    let updatedAt: Date
+}
+
+struct HoldingLiveStockQuote: Identifiable {
+    let stockName: String
+    let symbol: String
+    let quote: StockQuote
+
+    var id: String { symbol }
+}
+
+enum TradingSessionFilter: String, CaseIterable, Identifiable {
+    case all
+    case overnight
+    case preMarket
+    case regular
+    case afterHours
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .all: return "全部"
+        case .overnight: return "夜盘"
+        case .preMarket: return "盘前"
+        case .regular: return "盘中"
+        case .afterHours: return "盘后"
+        }
+    }
+}
+
+enum TradingSessionType: String {
+    case overnight
+    case preMarket
+    case regular
+    case afterHours
+}
+
+struct IntradayPricePoint: Identifiable {
+    let timestamp: Date
+    let close: Double
+    let session: TradingSessionType
+
+    var id: Date { timestamp }
+}

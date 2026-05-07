@@ -25,6 +25,11 @@ final class ExchangeRateViewModel: ObservableObject {
     @Published var intradayErrorMessage: String?
     @Published var holdingLiveStockQuotes: [HoldingLiveStockQuote] = []
     @Published var holdingStockErrorMessage: String?
+    @Published var watchlistStockQuotes: [WatchlistStockQuote] = []
+    @Published var hiddenRealtimeHoldingSymbols: Set<String> = []
+    @Published var currentTradingSession: TradingSessionType = .overnight
+    @Published var usMarketTimeText: String = "--:--"
+    @Published var sessionPriceNoticeMessage: String?
     @Published var stockSymbol: String = "AAPL" {
         didSet {
             let normalized = stockSymbol
@@ -37,21 +42,21 @@ final class ExchangeRateViewModel: ObservableObject {
             persistStockSymbol()
         }
     }
-    @Published var alphaVantageAPIKey: String = "demo" {
+    @Published var finnhubAPIKey: String = "d7tvh11r01qvtspvv84gd7tvh11r01qvtspvv850" {
         didSet {
-            persistAlphaVantageAPIKey()
+            persistFinnhubAPIKey()
         }
     }
 
     private let service = ExchangeRateService()
-    private let alphaVantageService = AlphaVantageService()
+    private let finnhubService = FinnhubService()
     private let ocrService = DollarOCRService()
     private let holdingsOCRService = HoldingsOCRService()
     private let uploadRecordsStorageKey = "myliverate.upload_records.v1"
     private let latestThumbnailStorageKey = "myliverate.latest_upload_thumbnail.v1"
     private let holdingRecordsStorageKey = "myliverate.holding_records.v1"
     private let stockSymbolStorageKey = "myliverate.stock_symbol.v1"
-    private let alphaVantageAPIKeyStorageKey = "myliverate.alphavantage_api_key.v1"
+    private let finnhubAPIKeyStorageKey = "myliverate.finnhub_api_key.v1"
     private static let usMarketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
 
     init() {
@@ -59,7 +64,9 @@ final class ExchangeRateViewModel: ObservableObject {
         latestUploadThumbnailData = UserDefaults.standard.data(forKey: latestThumbnailStorageKey)
         holdingRecords = loadPersistedHoldingRecords()
         stockSymbol = loadPersistedStockSymbol()
-        alphaVantageAPIKey = loadPersistedAlphaVantageAPIKey()
+        finnhubAPIKey = loadPersistedFinnhubAPIKey()
+        updateCurrentTradingSession()
+        syncHoldingLiveQuotesWithPlaceholders()
     }
 
     var targetCurrencies: [Currency] {
@@ -110,19 +117,130 @@ final class ExchangeRateViewModel: ObservableObject {
         isLoading = false
     }
 
-    func refreshStocksOnly() async {
+    func refreshAllHoldingsQuotesOnly() async {
         guard !isLoading else { return }
+        updateCurrentTradingSession()
         isLoading = true
-        await performStockRefresh()
+        await refreshHoldingStockQuotes()
         isLoading = false
+    }
+
+    func refreshManualInputStockAndAppend(_ rawSymbol: String) async {
+        let symbol = normalizedSymbol(rawSymbol)
+        guard !symbol.isEmpty else {
+            stockErrorMessage = "请输入有效股票代码"
+            return
+        }
+
+        guard !isLoading else { return }
+        updateCurrentTradingSession()
+        isLoading = true
+
+        do {
+            let quote = try await finnhubService.fetchQuote(
+                symbol: symbol,
+                apiKey: finnhubAPIKey
+            )
+            sessionPriceNoticeMessage = nil
+            let sessionAdjustedQuote = await adjustedQuoteForCurrentSession(
+                symbol: symbol,
+                baseQuote: quote,
+                updateNotice: true
+            )
+            stockSymbol = symbol
+            liveStockQuote = sessionAdjustedQuote
+            stockErrorMessage = nil
+            appendWatchlistQuote(sessionAdjustedQuote)
+        } catch {
+            stockErrorMessage = (error as? LocalizedError)?.errorDescription ?? "股票行情更新失败，请稍后重试"
+        }
+
+        isLoading = false
+    }
+
+    func refreshSingleHoldingQuote(symbol: String) async {
+        let normalized = normalizedSymbol(symbol)
+        guard !normalized.isEmpty else { return }
+        updateCurrentTradingSession()
+
+        do {
+            let quote = try await finnhubService.fetchQuote(
+                symbol: normalized,
+                apiKey: finnhubAPIKey
+            )
+            sessionPriceNoticeMessage = nil
+            let sessionAdjustedQuote = await adjustedQuoteForCurrentSession(
+                symbol: normalized,
+                baseQuote: quote,
+                updateNotice: true
+            )
+            let fallbackName = holdingRecords.first(where: { normalizedSymbol($0.stockCode ?? "") == normalized })?.stockName ?? normalized
+            if let index = holdingLiveStockQuotes.firstIndex(where: { $0.symbol == normalized }) {
+                let old = holdingLiveStockQuotes[index]
+                holdingLiveStockQuotes[index] = HoldingLiveStockQuote(
+                    stockName: old.stockName,
+                    symbol: normalized,
+                    quote: sessionAdjustedQuote
+                )
+            } else {
+                holdingLiveStockQuotes.append(
+                    HoldingLiveStockQuote(
+                        stockName: fallbackName,
+                        symbol: normalized,
+                        quote: sessionAdjustedQuote
+                    )
+                )
+                holdingLiveStockQuotes.sort { $0.symbol < $1.symbol }
+            }
+            holdingStockErrorMessage = nil
+        } catch {
+            holdingStockErrorMessage = (error as? LocalizedError)?.errorDescription ?? "持仓股票行情更新失败，请稍后重试"
+        }
+    }
+
+    func removeWatchlistSymbol(_ symbol: String) {
+        let normalized = normalizedSymbol(symbol)
+        watchlistStockQuotes.removeAll { $0.symbol == normalized }
+    }
+
+    func hideRealtimeHoldingSymbol(_ symbol: String) {
+        let normalized = normalizedSymbol(symbol)
+        guard !normalized.isEmpty else { return }
+        hiddenRealtimeHoldingSymbols.insert(normalized)
+        holdingLiveStockQuotes.removeAll { $0.symbol == normalized }
+    }
+
+    var visibleHoldingLiveStockQuotes: [HoldingLiveStockQuote] {
+        holdingLiveStockQuotes.filter { !hiddenRealtimeHoldingSymbols.contains($0.symbol) }
     }
 
     func updateStockSymbol(_ symbol: String) {
         stockSymbol = symbol
     }
 
-    func updateAlphaVantageAPIKey(_ key: String) {
-        alphaVantageAPIKey = key
+    func updateFinnhubAPIKey(_ key: String) {
+        finnhubAPIKey = key
+    }
+
+    func validateFinnhubTokenWithDefaultSymbol() async -> String? {
+        let key = finnhubAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            return "接口密钥不能为空"
+        }
+
+        guard !isLoading else {
+            return "正在刷新，请稍后再试"
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            _ = try await finnhubService.fetchQuote(symbol: "AAPL", apiKey: key)
+            return nil
+        } catch {
+            return (error as? LocalizedError)?.errorDescription ?? "接口校验失败，请稍后重试"
+        }
     }
 
     func recognizeUSDAmount(from imageData: Data) async {
@@ -363,11 +481,13 @@ final class ExchangeRateViewModel: ObservableObject {
 
         holdingRecords = Array(mergedByKey.values).sorted { $0.timestamp > $1.timestamp }
         persistHoldingRecords()
+        syncHoldingLiveQuotesWithPlaceholders()
     }
 
     func removeHoldingRecord(id: UUID) {
         holdingRecords.removeAll { $0.id == id }
         persistHoldingRecords()
+        syncHoldingLiveQuotesWithPlaceholders()
     }
 
     func updateHoldingName(id: UUID, newName: String) {
@@ -399,6 +519,7 @@ final class ExchangeRateViewModel: ObservableObject {
         )
         holdingRecords.sort { $0.timestamp > $1.timestamp }
         persistHoldingRecords()
+        syncHoldingLiveQuotesWithPlaceholders()
     }
 
     private func holdingKey(for record: HoldingRecord) -> String {
@@ -437,11 +558,16 @@ final class ExchangeRateViewModel: ObservableObject {
 
     private func refreshStockQuote() async {
         do {
-            let quote = try await alphaVantageService.fetchQuote(
+            let quote = try await finnhubService.fetchQuote(
                 symbol: stockSymbol,
-                apiKey: alphaVantageAPIKey
+                apiKey: finnhubAPIKey
             )
-            liveStockQuote = quote
+            sessionPriceNoticeMessage = nil
+            liveStockQuote = await adjustedQuoteForCurrentSession(
+                symbol: stockSymbol,
+                baseQuote: quote,
+                updateNotice: true
+            )
             stockErrorMessage = nil
         } catch {
             stockErrorMessage = (error as? LocalizedError)?.errorDescription ?? "股票行情更新失败，请稍后重试"
@@ -454,11 +580,22 @@ final class ExchangeRateViewModel: ObservableObject {
         await refreshHoldingStockQuotes()
     }
 
+    private func appendWatchlistQuote(_ quote: StockQuote) {
+        watchlistStockQuotes.removeAll { $0.symbol == quote.symbol }
+        watchlistStockQuotes.append(
+            WatchlistStockQuote(
+                symbol: quote.symbol,
+                quote: quote,
+                addedAt: Date()
+            )
+        )
+    }
+
     private func refreshIntradayPriceSeries() async {
         do {
-            let points = try await alphaVantageService.fetchIntradaySeries(
+            let points = try await finnhubService.fetchIntradaySeries(
                 symbol: stockSymbol,
-                apiKey: alphaVantageAPIKey
+                apiKey: finnhubAPIKey
             )
             intradayPricePoints = points
             intradayErrorMessage = nil
@@ -497,15 +634,20 @@ final class ExchangeRateViewModel: ObservableObject {
 
         for target in targets {
             do {
-                let quote = try await alphaVantageService.fetchQuote(
+                let quote = try await finnhubService.fetchQuote(
                     symbol: target.symbol,
-                    apiKey: alphaVantageAPIKey
+                    apiKey: finnhubAPIKey
+                )
+                let sessionAdjustedQuote = await adjustedQuoteForCurrentSession(
+                    symbol: target.symbol,
+                    baseQuote: quote,
+                    updateNotice: false
                 )
                 fetchedItems.append(
                     HoldingLiveStockQuote(
                         stockName: target.name,
                         symbol: target.symbol,
-                        quote: quote
+                        quote: sessionAdjustedQuote
                     )
                 )
             } catch {
@@ -540,10 +682,10 @@ final class ExchangeRateViewModel: ObservableObject {
         var targets: [(name: String, symbol: String)] = []
 
         for record in holdingRecords {
-            guard let code = record.stockCode?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .uppercased(),
-                  !code.isEmpty else {
+            guard let code = extractHoldingSymbol(from: record) else {
+                continue
+            }
+            if hiddenRealtimeHoldingSymbols.contains(code) {
                 continue
             }
             if seenSymbols.contains(code) {
@@ -556,6 +698,149 @@ final class ExchangeRateViewModel: ObservableObject {
         return targets
     }
 
+    private func syncHoldingLiveQuotesWithPlaceholders() {
+        let targets = uniqueHoldingTargets()
+        let existingBySymbol = Dictionary(uniqueKeysWithValues: holdingLiveStockQuotes.map { ($0.symbol, $0) })
+
+        holdingLiveStockQuotes = targets.map { target in
+            if let existing = existingBySymbol[target.symbol] {
+                return existing
+            }
+            return HoldingLiveStockQuote(
+                stockName: target.name,
+                symbol: target.symbol,
+                quote: StockQuote(
+                    symbol: target.symbol,
+                    price: 0,
+                    previousClose: 0,
+                    change: 0,
+                    changePercent: 0,
+                    updatedAt: Date()
+                )
+            )
+        }
+        .sorted { $0.symbol < $1.symbol }
+    }
+
+    private func updateCurrentTradingSession(at date: Date = Date()) {
+        currentTradingSession = classifyTradingSession(for: date)
+        usMarketTimeText = formattedUSMarketTime(date)
+    }
+
+    private func classifyTradingSession(for date: Date) -> TradingSessionType {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = Self.usMarketTimeZone
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        let minutes = (components.hour ?? 0) * 60 + (components.minute ?? 0)
+
+        let preMarketStart = 4 * 60
+        let regularStart = 9 * 60 + 30
+        let regularEnd = 16 * 60
+        let afterHoursEnd = 20 * 60
+
+        if minutes >= preMarketStart && minutes < regularStart {
+            return .preMarket
+        }
+        if minutes >= regularStart && minutes < regularEnd {
+            return .regular
+        }
+        if minutes >= regularEnd && minutes < afterHoursEnd {
+            return .afterHours
+        }
+        return .overnight
+    }
+
+    private func formattedUSMarketTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = Self.usMarketTimeZone
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private func adjustedQuoteForCurrentSession(
+        symbol: String,
+        baseQuote: StockQuote,
+        updateNotice: Bool
+    ) async -> StockQuote {
+        let session = currentTradingSession
+        guard session != .regular else {
+            if updateNotice {
+                sessionPriceNoticeMessage = nil
+            }
+            return baseQuote
+        }
+
+        do {
+            let series = try await finnhubService.fetchIntradaySeries(
+                symbol: symbol,
+                apiKey: finnhubAPIKey
+            )
+            guard let latestSessionPoint = series.last(where: { $0.session == session }) else {
+                if updateNotice {
+                    sessionPriceNoticeMessage = "未取到\(session.displayName)分时数据，已使用最新价。"
+                }
+                return baseQuote
+            }
+
+            let sessionPrice = latestSessionPoint.close
+            let previousClose = baseQuote.previousClose
+            let change = sessionPrice - previousClose
+            let changePercent = previousClose == 0 ? 0 : (change / previousClose) * 100
+
+            if updateNotice {
+                sessionPriceNoticeMessage = "已使用\(session.displayName)分时数据。"
+            }
+
+            return StockQuote(
+                symbol: baseQuote.symbol,
+                price: sessionPrice,
+                previousClose: previousClose,
+                change: change,
+                changePercent: changePercent,
+                updatedAt: latestSessionPoint.timestamp
+            )
+        } catch {
+            if updateNotice {
+                let message = (error as? LocalizedError)?.errorDescription ?? ""
+                if message.contains("你没有访问此资源的权限") {
+                    sessionPriceNoticeMessage = "当前 token 无\(session.displayName)数据权限，已使用最新价。"
+                } else {
+                    sessionPriceNoticeMessage = "\(session.displayName)分时请求失败，已使用最新价。"
+                }
+            }
+            return baseQuote
+        }
+    }
+
+    private func extractHoldingSymbol(from record: HoldingRecord) -> String? {
+        if let code = record.stockCode?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased(),
+           !code.isEmpty {
+            return code
+        }
+
+        let text = record.stockName.uppercased()
+        let pattern = #"[A-Z]{1,5}(?:\.[A-Z]{1,2})?"#
+        let blacklist = ["USD", "HKD", "CNY", "PNL"]
+
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        for match in regex.matches(in: text, range: range) {
+            guard let r = Range(match.range, in: text) else { continue }
+            let candidate = String(text[r])
+            if !blacklist.contains(candidate) {
+                return candidate
+            }
+        }
+
+        return nil
+    }
+
     private func persistStockSymbol() {
         UserDefaults.standard.set(stockSymbol, forKey: stockSymbolStorageKey)
     }
@@ -564,16 +849,22 @@ final class ExchangeRateViewModel: ObservableObject {
         let stored = UserDefaults.standard.string(forKey: stockSymbolStorageKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
-        return (stored?.isEmpty == false) ? stored! : "AAPL"
+        return (stored?.isEmpty == false) ? stored! : ""
     }
 
-    private func persistAlphaVantageAPIKey() {
-        UserDefaults.standard.set(alphaVantageAPIKey, forKey: alphaVantageAPIKeyStorageKey)
+    private func persistFinnhubAPIKey() {
+        UserDefaults.standard.set(finnhubAPIKey, forKey: finnhubAPIKeyStorageKey)
     }
 
-    private func loadPersistedAlphaVantageAPIKey() -> String {
-        let stored = UserDefaults.standard.string(forKey: alphaVantageAPIKeyStorageKey)?
+    private func loadPersistedFinnhubAPIKey() -> String {
+        let stored = UserDefaults.standard.string(forKey: finnhubAPIKeyStorageKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (stored?.isEmpty == false) ? stored! : "demo"
+        return (stored?.isEmpty == false) ? stored! : "d7tvh11r01qvtspvv84gd7tvh11r01qvtspvv850"
+    }
+
+    private func normalizedSymbol(_ symbol: String) -> String {
+        symbol
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
     }
 }

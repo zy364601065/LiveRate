@@ -92,6 +92,24 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
+enum DefaultLandingTab: String, CaseIterable, Identifiable {
+    case rates
+    case holdings
+    case realtime
+    case stats
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .rates: return "汇率"
+        case .holdings: return "持仓"
+        case .realtime: return "实时"
+        case .stats: return "统计"
+        }
+    }
+}
+
 struct TrendDataPoint: Identifiable {
     let periodStart: Date
     let amount: Double
@@ -210,6 +228,15 @@ enum TradingSessionType: String {
     case preMarket
     case regular
     case afterHours
+
+    var displayName: String {
+        switch self {
+        case .overnight: return "夜盘"
+        case .preMarket: return "盘前"
+        case .regular: return "盘中"
+        case .afterHours: return "盘后"
+        }
+    }
 }
 
 struct IntradayPricePoint: Identifiable {
@@ -218,4 +245,12 @@ struct IntradayPricePoint: Identifiable {
     let session: TradingSessionType
 
     var id: Date { timestamp }
+}
+
+struct WatchlistStockQuote: Identifiable {
+    let symbol: String
+    let quote: StockQuote
+    let addedAt: Date
+
+    var id: String { symbol }
 }

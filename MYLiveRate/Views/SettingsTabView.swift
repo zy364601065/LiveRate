@@ -1,6 +1,7 @@
 import SwiftUI
 
 private let appThemeStorageKey = "myliverate.app_theme"
+private let defaultLandingTabStorageKey = "myliverate.default_landing_tab"
 
 struct SettingsTabView: View {
     @ObservedObject var viewModel: ExchangeRateViewModel
@@ -12,12 +13,43 @@ struct SettingsTabView: View {
                     GeneralSettingsView()
                 }
 
+                NavigationLink("默认落地") {
+                    DefaultLandingTabSettingsView()
+                }
+
                 NavigationLink("接口密钥") {
                     APIKeySettingsView(viewModel: viewModel)
                 }
             }
             .navigationTitle("设置")
         }
+    }
+}
+
+private struct DefaultLandingTabSettingsView: View {
+    @AppStorage(defaultLandingTabStorageKey) private var selectedTabRawValue: String = DefaultLandingTab.rates.rawValue
+
+    var body: some View {
+        List {
+            Section("默认落地") {
+                ForEach(DefaultLandingTab.allCases) { tab in
+                    Button {
+                        selectedTabRawValue = tab.rawValue
+                    } label: {
+                        HStack {
+                            Text(tab.displayName)
+                            Spacer()
+                            if selectedTabRawValue == tab.rawValue {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+            }
+        }
+        .navigationTitle("默认落地")
     }
 }
 
@@ -52,30 +84,33 @@ private struct APIKeySettingsView: View {
     @State private var refreshSuccessMessage: String?
     @State private var refreshFailureMessage: String?
 
-    private var alphaVantageKeyBinding: Binding<String> {
+    private var finnhubKeyBinding: Binding<String> {
         Binding(
-            get: { viewModel.alphaVantageAPIKey },
-            set: { viewModel.updateAlphaVantageAPIKey($0) }
+            get: { viewModel.finnhubAPIKey },
+            set: { viewModel.updateFinnhubAPIKey($0) }
         )
     }
 
-    private func refreshWithFeedback() {
+    private func saveTokenWithFeedback() {
+        let trimmed = viewModel.finnhubAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            hasRefreshedSuccessfully = false
+            refreshSuccessMessage = nil
+            refreshFailureMessage = "接口密钥不能为空"
+            return
+        }
+
+        viewModel.updateFinnhubAPIKey(trimmed)
         Task {
-            await viewModel.refreshStocksOnly()
-            if viewModel.stockErrorMessage == nil {
-                hasRefreshedSuccessfully = true
-                refreshSuccessMessage = "刷新成功"
-                refreshFailureMessage = nil
-            } else {
+            let validationError = await viewModel.validateFinnhubTokenWithDefaultSymbol()
+            if let validationError {
                 hasRefreshedSuccessfully = false
                 refreshSuccessMessage = nil
-                if let stockErrorMessage = viewModel.stockErrorMessage, !stockErrorMessage.isEmpty {
-                    refreshFailureMessage = stockErrorMessage
-                } else if let holdingStockErrorMessage = viewModel.holdingStockErrorMessage, !holdingStockErrorMessage.isEmpty {
-                    refreshFailureMessage = holdingStockErrorMessage
-                } else {
-                    refreshFailureMessage = "刷新失败，请稍后重试"
-                }
+                refreshFailureMessage = validationError
+            } else {
+                hasRefreshedSuccessfully = true
+                refreshSuccessMessage = "token 有效（AAPL 校验通过）"
+                refreshFailureMessage = nil
             }
         }
     }
@@ -83,17 +118,17 @@ private struct APIKeySettingsView: View {
     var body: some View {
         List {
             Section("接口密钥") {
-                TextField("请输入接口密钥", text: alphaVantageKeyBinding)
+                TextField("请输入 Finnhub 接口密钥", text: finnhubKeyBinding)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                     .submitLabel(.done)
                     .onSubmit {
-                        refreshWithFeedback()
+                        saveTokenWithFeedback()
                     }
 
                 if !hasRefreshedSuccessfully {
-                    Button("立即刷新股票行情") {
-                        refreshWithFeedback()
+                    Button("保存并校验") {
+                        saveTokenWithFeedback()
                     }
                     .disabled(viewModel.isLoading)
                 }
@@ -110,13 +145,13 @@ private struct APIKeySettingsView: View {
                         .foregroundStyle(.red)
                 }
 
-                Text("可先使用演示密钥 demo 测试；正式使用建议替换为你自己的密钥。")
+                Text("请填写 Finnhub 的 token。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
         .navigationTitle("接口密钥")
-        .onChange(of: viewModel.alphaVantageAPIKey) { _, _ in
+        .onChange(of: viewModel.finnhubAPIKey) { _, _ in
             hasRefreshedSuccessfully = false
             refreshSuccessMessage = nil
             refreshFailureMessage = nil

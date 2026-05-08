@@ -10,17 +10,35 @@ struct StatsDashboardView: View {
         var id: Date { day }
     }
 
+    private struct MonthlyTrendSlot: Identifiable {
+        let month: Date
+        let amount: Double?
+        let plotDate: Date
+
+        var id: Date { month }
+    }
+
+    private enum SummaryPeriod: String, CaseIterable, Identifiable {
+        case currentMonth = "本月"
+        case allTime = "总计"
+        var id: String { rawValue }
+    }
+
     @ObservedObject var viewModel: ExchangeRateViewModel
     @State private var selectedDay = Date()
     @State private var trendPeriod: TrendPeriod = .daily
+    @State private var summaryPeriod: SummaryPeriod = .currentMonth
     @State private var displayedMonth = Date()
     @State private var dailyChartScrollPosition: Date = Date()
     @State private var selectedDailySlotDate: Date = Date()
+    @State private var monthlyChartScrollPosition: Date = Date()
+    @State private var selectedMonthlySlotDate: Date = Date()
     @State private var calendarGridWidth: CGFloat = 0
     @State private var hasInitializedSelection = false
     private let trendPeriodOptions: [TrendPeriod] = [.daily, .monthly]
     private let calendarCellSpacing: CGFloat = 2
     private let dailyVisibleDays = 7
+    private let monthlyVisibleMonths = 6
 
     private var marketCalendar: Calendar {
         var calendar = viewModel.marketCalendar
@@ -115,8 +133,10 @@ struct StatsDashboardView: View {
     }
 
     private var selectedDailyRuleColor: Color {
-        if selectedDailySlotAmount > 0 { return .red }
-        return .green
+        guard let amount = selectedDailySlot?.amount else { return .gray }
+        if amount > 0 { return .red }
+        if amount < 0 { return .green }
+        return .gray
     }
 
     private var selectedDailyDateText: String {
@@ -195,6 +215,147 @@ struct StatsDashboardView: View {
         return calendar.date(bySettingHour: 12, minute: 0, second: 0, of: day) ?? day
     }
 
+    private var monthlyTrendSlots: [MonthlyTrendSlot] {
+        let calendar = marketCalendar
+        guard let latestDataMonth = trendRows.last?.periodStart else {
+            let todayMonth = calendar.dateInterval(of: .month, for: Date())?.start ?? Date()
+            return [MonthlyTrendSlot(month: todayMonth, amount: nil, plotDate: midMonthInMarketCalendar(for: todayMonth))]
+        }
+        
+        guard let startMonth = calendar.date(byAdding: .month, value: -11, to: latestDataMonth) else {
+            return []
+        }
+        let endMonth = latestDataMonth
+        let amountByMonth = Dictionary(uniqueKeysWithValues: trendRows.map {
+            ($0.periodStart, $0.amount)
+        })
+
+        var slots: [MonthlyTrendSlot] = []
+        var cursor = startMonth
+        while cursor <= endMonth {
+            slots.append(
+                MonthlyTrendSlot(
+                    month: cursor,
+                    amount: amountByMonth[cursor],
+                    plotDate: midMonthInMarketCalendar(for: cursor)
+                )
+            )
+            guard let next = calendar.date(byAdding: .month, value: 1, to: cursor) else {
+                break
+            }
+            cursor = next
+        }
+        return slots
+    }
+
+    private var monthlyTrendYDomain: ClosedRange<Double> {
+        let absMax = monthlyTrendSlots
+            .compactMap(\.amount)
+            .map { abs($0) }
+            .max() ?? 0
+        let padded = max(absMax * 1.2, 1)
+        return (-padded)...padded
+    }
+
+    private var selectedMonthlySlot: MonthlyTrendSlot? {
+        monthlyTrendSlots.first {
+            marketCalendar.isDate($0.month, equalTo: selectedMonthlySlotDate, toGranularity: .month)
+        } ?? monthlyTrendSlots.last
+    }
+
+    private var latestMonthlyDataSlot: MonthlyTrendSlot? {
+        monthlyTrendSlots.last { $0.amount != nil } ?? monthlyTrendSlots.last
+    }
+
+    private var selectedMonthlySlotAmount: Double {
+        selectedMonthlySlot?.amount ?? 0
+    }
+
+    private var selectedMonthlySlotAmountText: String {
+        String(format: "%+.2f", selectedMonthlySlotAmount)
+    }
+
+    private var selectedMonthlySlotAmountColor: Color {
+        if selectedMonthlySlotAmount > 0 { return .red }
+        if selectedMonthlySlotAmount < 0 { return .green }
+        return .secondary
+    }
+
+    private var selectedMonthlyRuleColor: Color {
+        guard let amount = selectedMonthlySlot?.amount else { return .gray }
+        if amount > 0 { return .red }
+        if amount < 0 { return .green }
+        return .gray
+    }
+
+    private var selectedMonthlyDateText: String {
+        guard let month = selectedMonthlySlot?.month else { return "--" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = marketCalendar.timeZone
+        formatter.dateFormat = "yyyy年M月"
+        return formatter.string(from: month)
+    }
+
+    private var monthlyBoundaryDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = marketCalendar.timeZone
+        formatter.dateFormat = "yyyy-MM"
+        return formatter
+    }
+
+    private var monthlyChartXDomain: ClosedRange<Date> {
+        guard let first = monthlyTrendSlots.first?.plotDate,
+              let last = monthlyTrendSlots.last?.plotDate else {
+            let now = Date()
+            return now...now
+        }
+        let padding = halfVisibleMonthlyTimeInterval
+        let start = first.addingTimeInterval(-padding)
+        let end = last.addingTimeInterval(padding)
+        return start...end
+    }
+
+    private var halfVisibleMonthlyTimeInterval: TimeInterval {
+        (Double(monthlyVisibleMonths) / 2.0) * 30 * 24 * 3600
+    }
+
+    private var monthlyCenteredPlotDateFromScroll: Date {
+        monthlyChartScrollPosition.addingTimeInterval(halfVisibleMonthlyTimeInterval)
+    }
+
+    private func leadingDateForMonthlyCenteredFocus(_ focusDate: Date) -> Date {
+        focusDate.addingTimeInterval(-halfVisibleMonthlyTimeInterval)
+    }
+
+    private func syncMonthlySelectionFromScrollPosition(_ leadingDate: Date) {
+        let centerDate = leadingDate.addingTimeInterval(halfVisibleMonthlyTimeInterval)
+        guard let nearest = monthlyTrendSlots.min(by: {
+            abs($0.plotDate.timeIntervalSince(centerDate)) < abs($1.plotDate.timeIntervalSince(centerDate))
+        }) else {
+            return
+        }
+
+        if !marketCalendar.isDate(selectedMonthlySlotDate, equalTo: nearest.month, toGranularity: .month) {
+            selectedMonthlySlotDate = nearest.month
+        }
+    }
+
+    private func alignSelectedMonthlySlotToLatest() {
+        guard let target = latestMonthlyDataSlot else { return }
+        selectedMonthlySlotDate = target.month
+        monthlyChartScrollPosition = leadingDateForMonthlyCenteredFocus(target.plotDate)
+    }
+
+    private func midMonthInMarketCalendar(for monthStart: Date) -> Date {
+        let calendar = marketCalendar
+        guard let days = calendar.range(of: .day, in: .month, for: monthStart)?.count else {
+            return monthStart
+        }
+        return calendar.date(byAdding: .day, value: days / 2, to: monthStart) ?? monthStart
+    }
+
     private var selectedDayEntries: [DayUploadEntry] {
         viewModel.uploadEntries(on: selectedDay, currency: viewModel.statsDisplayCurrency)
     }
@@ -211,6 +372,16 @@ struct StatsDashboardView: View {
         Dictionary(uniqueKeysWithValues: rows.map {
             (marketCalendar.startOfDay(for: $0.day), $0.convertedAmount)
         })
+    }
+
+    private var currentMonthTotalAmount: Double {
+        let calendar = marketCalendar
+        return monthAmountMap.reduce(0) { total, pair in
+            if calendar.isDate(pair.key, equalTo: displayedMonth, toGranularity: .month) {
+                return total + pair.value
+            }
+            return total
+        }
     }
 
     private func chartDateText(for date: Date) -> String {
@@ -367,8 +538,8 @@ struct StatsDashboardView: View {
             VStack(alignment: .leading, spacing: 16) {
                 titleHeader
                 calendarSection
-                trendSection
                 summarySection
+                trendSection
             }
             .padding()
         }
@@ -379,7 +550,14 @@ struct StatsDashboardView: View {
             handleTrendPeriodChange(newValue)
         }
         .onChange(of: dailyChartScrollPosition) { _, newValue in
-            handleScrollPositionChange(newValue)
+            if trendPeriod == .daily {
+                syncDailySelectionFromScrollPosition(newValue)
+            }
+        }
+        .onChange(of: monthlyChartScrollPosition) { _, newValue in
+            if trendPeriod == .monthly {
+                syncMonthlySelectionFromScrollPosition(newValue)
+            }
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -403,23 +581,24 @@ struct StatsDashboardView: View {
         
         DispatchQueue.main.async {
             self.alignSelectedDailySlotToLatest()
+            self.alignSelectedMonthlySlotToLatest()
         }
     }
 
     private func handleTrendPeriodChange(_ newValue: TrendPeriod) {
-        guard newValue == .daily else { return }
-        alignSelectedDailySlotToLatest()
+        if newValue == .daily {
+            alignSelectedDailySlotToLatest()
+        } else if newValue == .monthly {
+            alignSelectedMonthlySlotToLatest()
+        }
     }
 
     private func handleTrendSlotsChange(_ newValue: [Date]) {
         if trendPeriod == .daily {
             alignSelectedDailySlotToLatest()
+        } else if trendPeriod == .monthly {
+            alignSelectedMonthlySlotToLatest()
         }
-    }
-
-    private func handleScrollPositionChange(_ newValue: Date) {
-        guard trendPeriod == .daily else { return }
-        syncDailySelectionFromScrollPosition(newValue)
     }
 
     private var currencyMenu: some View {
@@ -612,26 +791,60 @@ struct StatsDashboardView: View {
     private var monthlyTrendChart: some View {
         Group {
             if #available(iOS 16.0, *) {
-                Chart(trendRows) { row in
-                    BarMark(
-                        x: .value("日期", row.periodStart),
-                        y: .value("金额", row.amount),
-                        width: .fixed(14)
-                    )
-                    .foregroundStyle(row.amount >= 0 ? Color.red : Color.green)
-                }
-                .chartXAxis {
-                    AxisMarks(values: .automatic) { value in
-                        AxisGridLine()
-                        AxisTick()
-                        AxisValueLabel {
-                            if let date = value.as(Date.self) {
-                                Text(chartDateText(for: date))
+                VStack(spacing: 0) {
+                    Text(selectedMonthlyDateText)
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    Text(selectedMonthlySlotAmountText)
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(selectedMonthlySlotAmountColor)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 8)
+
+                    Chart {
+                        ForEach(monthlyTrendSlots) { slot in
+                            if let amount = slot.amount {
+                                BarMark(
+                                    x: .value("月份", slot.plotDate),
+                                    y: .value("金额", amount),
+                                    width: .fixed(14)
+                                )
+                                .foregroundStyle(amount >= 0 ? Color.red : Color.green)
                             }
                         }
+
+                        RuleMark(y: .value("中轴", 0))
+                            .lineStyle(StrokeStyle(lineWidth: 1))
+                            .foregroundStyle(.gray.opacity(0.45))
+
+                        RuleMark(x: .value("中心线", monthlyCenteredPlotDateFromScroll))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                            .foregroundStyle(selectedMonthlyRuleColor)
+                    }
+                    .chartXScale(domain: monthlyChartXDomain)
+                    .chartYScale(domain: monthlyTrendYDomain)
+                    .chartScrollableAxes(.horizontal)
+                    .chartXVisibleDomain(length: 60 * 60 * 24 * 30 * 6)
+                    .chartScrollPosition(x: $monthlyChartScrollPosition)
+                    .chartScrollTargetBehavior(.valueAligned(matching: DateComponents(timeZone: marketCalendar.timeZone, day: 15)))
+                    .chartXAxis {
+                        AxisMarks(values: .stride(by: .month, calendar: marketCalendar)) { _ in
+                        }
+                    }
+                    .frame(height: 220)
+
+                    if let first = monthlyTrendSlots.first?.month, let last = monthlyTrendSlots.last?.month {
+                        HStack {
+                            Text(monthlyBoundaryDateFormatter.string(from: first))
+                            Spacer()
+                            Text(monthlyBoundaryDateFormatter.string(from: last))
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
                     }
                 }
-                .frame(height: 220)
             } else {
                 Text("当前系统版本不支持趋势图")
                     .font(.footnote)
@@ -668,13 +881,27 @@ struct StatsDashboardView: View {
 
     private var summarySection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("汇总金额")
-                .font(.headline)
+            HStack {
+                Text("汇总金额")
+                    .font(.headline)
+                Spacer()
+                Picker("汇总范围", selection: $summaryPeriod) {
+                    ForEach(SummaryPeriod.allCases) { period in
+                        Text(period.rawValue).tag(period)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 140)
+            }
+            
+            let displayAmount = summaryPeriod == .currentMonth ? currentMonthTotalAmount : (viewModel.dailyTotalAmount(for: viewModel.statsDisplayCurrency) ?? 0)
+            
             Text(viewModel.formatAmount(
-                viewModel.dailyTotalAmount(for: viewModel.statsDisplayCurrency),
+                displayAmount,
                 currency: viewModel.statsDisplayCurrency
             ))
             .font(.system(size: 30, weight: .bold))
+            .foregroundStyle(displayAmount > 0 ? Color.red : (displayAmount < 0 ? Color.green : .primary))
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)

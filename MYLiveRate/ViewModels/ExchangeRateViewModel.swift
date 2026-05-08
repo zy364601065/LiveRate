@@ -360,12 +360,10 @@ final class ExchangeRateViewModel: ObservableObject {
         }
 
         return grouped.compactMap { periodStart, records in
-            guard let latest = records.max(by: { $0.record.timestamp < $1.record.timestamp }),
-                  let converted = convertedFromUSD(latest.record.usdAmount, to: currency) else {
-                return nil
-            }
-
-            return TrendDataPoint(periodStart: periodStart, amount: converted)
+            let amounts = records.compactMap { convertedFromUSD($0.record.usdAmount, to: currency) }
+            guard !amounts.isEmpty else { return nil }
+            let total = amounts.reduce(0, +)
+            return TrendDataPoint(periodStart: periodStart, amount: total)
         }
         .sorted { $0.periodStart < $1.periodStart }
     }

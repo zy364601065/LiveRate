@@ -48,8 +48,7 @@ final class ExchangeRateViewModel: ObservableObject {
         }
     }
 
-    private let service = ExchangeRateService()
-    private let finnhubService = FinnhubService()
+    private let networkService = NetworkService()
     private let ocrService = DollarOCRService()
     private let holdingsOCRService = HoldingsOCRService()
     private let uploadRecordsStorageKey = "myliverate.upload_records.v1"
@@ -104,7 +103,7 @@ final class ExchangeRateViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let snapshot = try await service.fetch(base: baseCurrency)
+            let snapshot = try await networkService.fetch(base: baseCurrency)
             rates = snapshot.rates
             lastUpdatedAt = snapshot.updatedAt
         } catch {
@@ -137,7 +136,7 @@ final class ExchangeRateViewModel: ObservableObject {
         isLoading = true
 
         do {
-            let quote = try await finnhubService.fetchQuote(
+            let quote = try await networkService.fetchQuote(
                 symbol: symbol,
                 apiKey: finnhubAPIKey
             )
@@ -164,7 +163,7 @@ final class ExchangeRateViewModel: ObservableObject {
         updateCurrentTradingSession()
 
         do {
-            let quote = try await finnhubService.fetchQuote(
+            let quote = try await networkService.fetchQuote(
                 symbol: normalized,
                 apiKey: finnhubAPIKey
             )
@@ -236,7 +235,7 @@ final class ExchangeRateViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            _ = try await finnhubService.fetchQuote(symbol: "AAPL", apiKey: key)
+            _ = try await networkService.fetchQuote(symbol: "AAPL", apiKey: key)
             return nil
         } catch {
             return (error as? LocalizedError)?.errorDescription ?? "接口校验失败，请稍后重试"
@@ -556,7 +555,7 @@ final class ExchangeRateViewModel: ObservableObject {
 
     private func refreshStockQuote() async {
         do {
-            let quote = try await finnhubService.fetchQuote(
+            let quote = try await networkService.fetchQuote(
                 symbol: stockSymbol,
                 apiKey: finnhubAPIKey
             )
@@ -591,7 +590,7 @@ final class ExchangeRateViewModel: ObservableObject {
 
     private func refreshIntradayPriceSeries() async {
         do {
-            let points = try await finnhubService.fetchIntradaySeries(
+            let points = try await networkService.fetchIntradaySeries(
                 symbol: stockSymbol,
                 apiKey: finnhubAPIKey
             )
@@ -632,7 +631,7 @@ final class ExchangeRateViewModel: ObservableObject {
 
         for target in targets {
             do {
-                let quote = try await finnhubService.fetchQuote(
+                let quote = try await networkService.fetchQuote(
                     symbol: target.symbol,
                     apiKey: finnhubAPIKey
                 )
@@ -770,7 +769,7 @@ final class ExchangeRateViewModel: ObservableObject {
         }
 
         do {
-            let series = try await finnhubService.fetchIntradaySeries(
+            let series = try await networkService.fetchIntradaySeries(
                 symbol: symbol,
                 apiKey: finnhubAPIKey
             )

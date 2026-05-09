@@ -19,14 +19,22 @@ final class ExchangeRateViewModel: ObservableObject {
     @Published var isRecognizingHolding = false
     @Published var holdingMessage: String?
     @Published var holdingRecords: [HoldingRecord] = []
-    @Published var liveStockQuote: StockQuote?
+    @Published var liveStockQuote: StockQuote? {
+        didSet { persistLiveStockQuote() }
+    }
     @Published var stockErrorMessage: String?
     @Published var intradayPricePoints: [IntradayPricePoint] = []
     @Published var intradayErrorMessage: String?
-    @Published var holdingLiveStockQuotes: [HoldingLiveStockQuote] = []
+    @Published var holdingLiveStockQuotes: [HoldingLiveStockQuote] = [] {
+        didSet { persistHoldingLiveStockQuotes() }
+    }
     @Published var holdingStockErrorMessage: String?
-    @Published var watchlistStockQuotes: [WatchlistStockQuote] = []
-    @Published var hiddenRealtimeHoldingSymbols: Set<String> = []
+    @Published var watchlistStockQuotes: [WatchlistStockQuote] = [] {
+        didSet { persistWatchlistStockQuotes() }
+    }
+    @Published var hiddenRealtimeHoldingSymbols: Set<String> = [] {
+        didSet { persistHiddenRealtimeHoldingSymbols() }
+    }
     @Published var currentTradingSession: TradingSessionType = .overnight
     @Published var usMarketTimeText: String = "--:--"
     @Published var sessionPriceNoticeMessage: String?
@@ -56,6 +64,10 @@ final class ExchangeRateViewModel: ObservableObject {
     private let holdingRecordsStorageKey = "myliverate.holding_records.v1"
     private let stockSymbolStorageKey = "myliverate.stock_symbol.v1"
     private let finnhubAPIKeyStorageKey = "myliverate.finnhub_api_key.v1"
+    private let liveStockQuoteStorageKey = "myliverate.realtime.live_quote.v1"
+    private let holdingLiveQuotesStorageKey = "myliverate.realtime.holding_quotes.v1"
+    private let watchlistQuotesStorageKey = "myliverate.realtime.watchlist_quotes.v1"
+    private let hiddenRealtimeSymbolsStorageKey = "myliverate.realtime.hidden_symbols.v1"
     private static let usMarketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
 
     init() {
@@ -64,6 +76,10 @@ final class ExchangeRateViewModel: ObservableObject {
         holdingRecords = loadPersistedHoldingRecords()
         stockSymbol = loadPersistedStockSymbol()
         finnhubAPIKey = loadPersistedFinnhubAPIKey()
+        liveStockQuote = loadPersistedLiveStockQuote()
+        holdingLiveStockQuotes = loadPersistedHoldingLiveStockQuotes()
+        watchlistStockQuotes = loadPersistedWatchlistStockQuotes()
+        hiddenRealtimeHoldingSymbols = loadPersistedHiddenRealtimeHoldingSymbols()
         updateCurrentTradingSession()
         syncHoldingLiveQuotesWithPlaceholders()
     }
@@ -191,6 +207,7 @@ final class ExchangeRateViewModel: ObservableObject {
                 )
                 holdingLiveStockQuotes.sort { $0.symbol < $1.symbol }
             }
+            applyRealtimeQuoteToHoldingRecords(symbol: normalized, quote: sessionAdjustedQuote)
             holdingStockErrorMessage = nil
         } catch {
             holdingStockErrorMessage = (error as? LocalizedError)?.errorDescription ?? "持仓股票行情更新失败，请稍后重试"
@@ -626,6 +643,7 @@ final class ExchangeRateViewModel: ObservableObject {
         }
 
         var fetchedItems: [HoldingLiveStockQuote] = []
+        var fetchedQuotesBySymbol: [String: StockQuote] = [:]
         var failedCount = 0
         var errorCountByMessage: [String: Int] = [:]
 
@@ -647,6 +665,7 @@ final class ExchangeRateViewModel: ObservableObject {
                         quote: sessionAdjustedQuote
                     )
                 )
+                fetchedQuotesBySymbol[target.symbol] = sessionAdjustedQuote
             } catch {
                 failedCount += 1
                 let message = (error as? LocalizedError)?.errorDescription ?? "未知错误"
@@ -655,6 +674,7 @@ final class ExchangeRateViewModel: ObservableObject {
         }
 
         holdingLiveStockQuotes = fetchedItems.sorted { $0.symbol < $1.symbol }
+        applyRealtimeQuotesToHoldingRecords(fetchedQuotesBySymbol)
         let dominantErrorMessage = errorCountByMessage.max(by: { $0.value < $1.value })?.key
 
         if fetchedItems.isEmpty {
@@ -717,6 +737,87 @@ final class ExchangeRateViewModel: ObservableObject {
             )
         }
         .sorted { $0.symbol < $1.symbol }
+    }
+
+    private func applyRealtimeQuoteToHoldingRecords(symbol: String, quote: StockQuote) {
+        applyRealtimeQuotesToHoldingRecords([symbol: quote])
+    }
+
+    private func applyRealtimeQuotesToHoldingRecords(_ quotesBySymbol: [String: StockQuote]) {
+        guard !quotesBySymbol.isEmpty else { return }
+        var changed = false
+
+        holdingRecords = holdingRecords.map { record in
+            guard let symbol = extractHoldingSymbol(from: record),
+                  let quote = quotesBySymbol[symbol] else {
+                return record
+            }
+
+            let updated = mergedHoldingRecord(record: record, quote: quote)
+            if holdingRecordPayloadChanged(lhs: updated, rhs: record) {
+                changed = true
+            }
+            return updated
+        }
+
+        if changed {
+            persistHoldingRecords()
+        }
+    }
+
+    private func mergedHoldingRecord(record: HoldingRecord, quote: StockQuote) -> HoldingRecord {
+        let quantity = record.quantity
+        let costPrice = record.costPrice
+        let latestPrice = quote.price
+
+        let marketValue: Double? = {
+            guard let quantity else { return record.marketValue }
+            return quantity * latestPrice
+        }()
+
+        let todayPnL: Double? = {
+            guard let quantity else { return record.todayPnL }
+            return quantity * quote.change
+        }()
+
+        let todayPnLPercent: Double? = {
+            guard quantity != nil else { return record.todayPnLPercent }
+            return quote.changePercent
+        }()
+
+        let holdingPnL: Double? = {
+            guard let quantity, let costPrice else { return record.holdingPnL }
+            return (latestPrice - costPrice) * quantity
+        }()
+
+        let holdingPnLPercent: Double? = {
+            guard let costPrice, costPrice != 0 else { return record.holdingPnLPercent }
+            return ((latestPrice - costPrice) / costPrice) * 100
+        }()
+
+        return HoldingRecord(
+            id: record.id,
+            timestamp: record.timestamp,
+            stockName: record.stockName,
+            stockCode: record.stockCode,
+            marketValue: marketValue,
+            quantity: quantity,
+            currentPrice: latestPrice,
+            costPrice: costPrice,
+            todayPnL: todayPnL,
+            todayPnLPercent: todayPnLPercent,
+            holdingPnL: holdingPnL,
+            holdingPnLPercent: holdingPnLPercent
+        )
+    }
+
+    private func holdingRecordPayloadChanged(lhs: HoldingRecord, rhs: HoldingRecord) -> Bool {
+        lhs.marketValue != rhs.marketValue ||
+        lhs.currentPrice != rhs.currentPrice ||
+        lhs.todayPnL != rhs.todayPnL ||
+        lhs.todayPnLPercent != rhs.todayPnLPercent ||
+        lhs.holdingPnL != rhs.holdingPnL ||
+        lhs.holdingPnLPercent != rhs.holdingPnLPercent
     }
 
     private func updateCurrentTradingSession(at date: Date = Date()) {
@@ -863,5 +964,62 @@ final class ExchangeRateViewModel: ObservableObject {
         symbol
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
+    }
+
+    private func persistLiveStockQuote() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try? encoder.encode(liveStockQuote)
+        UserDefaults.standard.set(data, forKey: liveStockQuoteStorageKey)
+    }
+
+    private func loadPersistedLiveStockQuote() -> StockQuote? {
+        guard let data = UserDefaults.standard.data(forKey: liveStockQuoteStorageKey) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(StockQuote?.self, from: data)
+    }
+
+    private func persistHoldingLiveStockQuotes() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(holdingLiveStockQuotes) else { return }
+        UserDefaults.standard.set(data, forKey: holdingLiveQuotesStorageKey)
+    }
+
+    private func loadPersistedHoldingLiveStockQuotes() -> [HoldingLiveStockQuote] {
+        guard let data = UserDefaults.standard.data(forKey: holdingLiveQuotesStorageKey) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([HoldingLiveStockQuote].self, from: data)) ?? []
+    }
+
+    private func persistWatchlistStockQuotes() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(watchlistStockQuotes) else { return }
+        UserDefaults.standard.set(data, forKey: watchlistQuotesStorageKey)
+    }
+
+    private func loadPersistedWatchlistStockQuotes() -> [WatchlistStockQuote] {
+        guard let data = UserDefaults.standard.data(forKey: watchlistQuotesStorageKey) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([WatchlistStockQuote].self, from: data)) ?? []
+    }
+
+    private func persistHiddenRealtimeHoldingSymbols() {
+        UserDefaults.standard.set(Array(hiddenRealtimeHoldingSymbols), forKey: hiddenRealtimeSymbolsStorageKey)
+    }
+
+    private func loadPersistedHiddenRealtimeHoldingSymbols() -> Set<String> {
+        let symbols = UserDefaults.standard.stringArray(forKey: hiddenRealtimeSymbolsStorageKey) ?? []
+        return Set(symbols.map(normalizedSymbol))
     }
 }

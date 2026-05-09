@@ -186,7 +186,7 @@ struct RateSnapshot {
     let rates: [Currency: Double]
 }
 
-struct StockQuote {
+struct StockQuote: Codable {
     let symbol: String
     let price: Double
     let previousClose: Double
@@ -195,7 +195,7 @@ struct StockQuote {
     let updatedAt: Date
 }
 
-struct HoldingLiveStockQuote: Identifiable {
+struct HoldingLiveStockQuote: Identifiable, Codable {
     let stockName: String
     let symbol: String
     let quote: StockQuote
@@ -247,7 +247,7 @@ struct IntradayPricePoint: Identifiable {
     var id: Date { timestamp }
 }
 
-struct WatchlistStockQuote: Identifiable {
+struct WatchlistStockQuote: Identifiable, Codable {
     let symbol: String
     let quote: StockQuote
     let addedAt: Date

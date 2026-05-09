@@ -24,9 +24,18 @@ struct StatsDashboardView: View {
         var id: String { rawValue }
     }
 
+    private enum TrendChartStyle: String, CaseIterable, Identifiable {
+        case bar = "柱状"
+        case line = "折线"
+        case area = "面积"
+        case scatter = "散点"
+        var id: String { rawValue }
+    }
+
     @ObservedObject var viewModel: ExchangeRateViewModel
     @State private var selectedDay = Date()
     @State private var trendPeriod: TrendPeriod = .daily
+    @State private var trendChartStyle: TrendChartStyle = .bar
     @State private var summaryPeriod: SummaryPeriod = .currentMonth
     @State private var displayedMonth = Date()
     @State private var dailyChartScrollPosition: Date = Date()
@@ -712,143 +721,184 @@ struct StatsDashboardView: View {
     }
 
     private var trendHeader: some View {
-        HStack {
-            Text("趋势走向")
-                .font(.headline)
-            Spacer()
-            Picker("趋势周期", selection: $trendPeriod) {
-                ForEach(trendPeriodOptions) { period in
-                    Text(period.displayName).tag(period)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("趋势走向")
+                    .font(.headline)
+                Spacer()
+                Picker("趋势周期", selection: $trendPeriod) {
+                    ForEach(trendPeriodOptions) { period in
+                        Text(period.displayName).tag(period)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+            }
+
+            Picker("图形样式", selection: $trendChartStyle) {
+                ForEach(TrendChartStyle.allCases) { style in
+                    Text(style.rawValue).tag(style)
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 220)
         }
     }
 
     private var dailyTrendChart: some View {
-        Group {
-            if #available(iOS 16.0, *) {
-                VStack(spacing: 0) {
-                    Text(selectedDailyDateText)
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, alignment: .center)
+        VStack(spacing: 0) {
+            Text(selectedDailyDateText)
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .center)
 
-                    Text(selectedDailySlotAmountText)
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(selectedDailySlotAmountColor)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.bottom, 8)
+            Text(selectedDailySlotAmountText)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(selectedDailySlotAmountColor)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 8)
 
-                    Chart {
-                        ForEach(dailyTrendSlots) { slot in
-                            if let amount = slot.amount {
-                                BarMark(
-                                    x: .value("日期", slot.plotDate),
-                                    y: .value("金额", amount),
-                                    width: .fixed(9)
-                                )
-                                .foregroundStyle(amount >= 0 ? Color.red : Color.green)
-                            }
+            Chart {
+                ForEach(dailyTrendSlots) { slot in
+                    if let amount = slot.amount {
+                        switch trendChartStyle {
+                        case .bar:
+                            BarMark(
+                                x: .value("日期", slot.plotDate),
+                                y: .value("金额", amount),
+                                width: .fixed(9)
+                            )
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                        case .line:
+                            LineMark(
+                                x: .value("日期", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                        case .area:
+                            AreaMark(
+                                x: .value("日期", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle((amount >= 0 ? Color.red : Color.green).opacity(0.35))
+                        case .scatter:
+                            PointMark(
+                                x: .value("日期", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .symbolSize(40)
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
                         }
-
-                        RuleMark(y: .value("中轴", 0))
-                            .lineStyle(StrokeStyle(lineWidth: 1))
-                            .foregroundStyle(.gray.opacity(0.45))
-
-                        RuleMark(x: .value("中心线", centeredPlotDateFromScroll))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                            .foregroundStyle(selectedDailyRuleColor)
-                    }
-                    .chartXScale(domain: dailyChartXDomain)
-                    .chartYScale(domain: dailyTrendYDomain)
-                    .chartScrollableAxes(.horizontal)
-                    .chartXVisibleDomain(length: 60 * 60 * 24 * 7)
-                    .chartScrollPosition(x: $dailyChartScrollPosition)
-                    .chartScrollTargetBehavior(.valueAligned(matching: DateComponents(timeZone: marketCalendar.timeZone, hour: 12)))
-                    .chartXAxis(.hidden)
-                    .frame(height: 220)
-
-                    if let first = dailyTrendSlots.first?.day, let last = dailyTrendSlots.last?.day {
-                        HStack {
-                            Text(dailyBoundaryDateFormatter.string(from: first))
-                            Spacer()
-                            Text(dailyBoundaryDateFormatter.string(from: last))
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 4)
                     }
                 }
-            } else {
-                Text("当前系统版本不支持趋势图")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+
+                RuleMark(y: .value("中轴", 0))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .foregroundStyle(.gray.opacity(0.45))
+
+                RuleMark(x: .value("中心线", centeredPlotDateFromScroll))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(selectedDailyRuleColor)
+            }
+            .chartXScale(domain: dailyChartXDomain)
+            .chartYScale(domain: dailyTrendYDomain)
+            .chartScrollableAxes(.horizontal)
+            .chartXVisibleDomain(length: 60 * 60 * 24 * 7)
+            .chartScrollPosition(x: $dailyChartScrollPosition)
+            .chartScrollTargetBehavior(.valueAligned(matching: DateComponents(timeZone: marketCalendar.timeZone, hour: 12)))
+            .chartXAxis(.hidden)
+            .frame(height: 220)
+
+            if let first = dailyTrendSlots.first?.day, let last = dailyTrendSlots.last?.day {
+                HStack {
+                    Text(dailyBoundaryDateFormatter.string(from: first))
+                    Spacer()
+                    Text(dailyBoundaryDateFormatter.string(from: last))
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
             }
         }
     }
 
     private var monthlyTrendChart: some View {
-        Group {
-            if #available(iOS 16.0, *) {
-                VStack(spacing: 0) {
-                    Text(selectedMonthlyDateText)
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, alignment: .center)
+        VStack(spacing: 0) {
+            Text(selectedMonthlyDateText)
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .center)
 
-                    Text(selectedMonthlySlotAmountText)
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(selectedMonthlySlotAmountColor)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.bottom, 8)
+            Text(selectedMonthlySlotAmountText)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(selectedMonthlySlotAmountColor)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 8)
 
-                    Chart {
-                        ForEach(monthlyTrendSlots) { slot in
-                            if let amount = slot.amount {
-                                BarMark(
-                                    x: .value("月份", slot.plotDate),
-                                    y: .value("金额", amount),
-                                    width: .fixed(14)
-                                )
-                                .foregroundStyle(amount >= 0 ? Color.red : Color.green)
-                            }
+            Chart {
+                ForEach(monthlyTrendSlots) { slot in
+                    if let amount = slot.amount {
+                        switch trendChartStyle {
+                        case .bar:
+                            BarMark(
+                                x: .value("月份", slot.plotDate),
+                                y: .value("金额", amount),
+                                width: .fixed(14)
+                            )
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                        case .line:
+                            LineMark(
+                                x: .value("月份", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                        case .area:
+                            AreaMark(
+                                x: .value("月份", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle((amount >= 0 ? Color.red : Color.green).opacity(0.35))
+                        case .scatter:
+                            PointMark(
+                                x: .value("月份", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .symbolSize(48)
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
                         }
-
-                        RuleMark(y: .value("中轴", 0))
-                            .lineStyle(StrokeStyle(lineWidth: 1))
-                            .foregroundStyle(.gray.opacity(0.45))
-
-                        RuleMark(x: .value("中心线", monthlyCenteredPlotDateFromScroll))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                            .foregroundStyle(selectedMonthlyRuleColor)
-                    }
-                    .chartXScale(domain: monthlyChartXDomain)
-                    .chartYScale(domain: monthlyTrendYDomain)
-                    .chartScrollableAxes(.horizontal)
-                    .chartXVisibleDomain(length: 60 * 60 * 24 * 30 * 6)
-                    .chartScrollPosition(x: $monthlyChartScrollPosition)
-                    .chartScrollTargetBehavior(.valueAligned(matching: DateComponents(timeZone: marketCalendar.timeZone, day: 15)))
-                    .chartXAxis {
-                        AxisMarks(values: .stride(by: .month, calendar: marketCalendar)) { _ in
-                        }
-                    }
-                    .frame(height: 220)
-
-                    if let first = monthlyTrendSlots.first?.month, let last = monthlyTrendSlots.last?.month {
-                        HStack {
-                            Text(monthlyBoundaryDateFormatter.string(from: first))
-                            Spacer()
-                            Text(monthlyBoundaryDateFormatter.string(from: last))
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 4)
                     }
                 }
-            } else {
-                Text("当前系统版本不支持趋势图")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+
+                RuleMark(y: .value("中轴", 0))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .foregroundStyle(.gray.opacity(0.45))
+
+                RuleMark(x: .value("中心线", monthlyCenteredPlotDateFromScroll))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(selectedMonthlyRuleColor)
+            }
+            .chartXScale(domain: monthlyChartXDomain)
+            .chartYScale(domain: monthlyTrendYDomain)
+            .chartScrollableAxes(.horizontal)
+            .chartXVisibleDomain(length: 60 * 60 * 24 * 30 * 6)
+            .chartScrollPosition(x: $monthlyChartScrollPosition)
+            .chartScrollTargetBehavior(.valueAligned(matching: DateComponents(timeZone: marketCalendar.timeZone, day: 15)))
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .month, calendar: marketCalendar)) { _ in
+                }
+            }
+            .frame(height: 220)
+
+            if let first = monthlyTrendSlots.first?.month, let last = monthlyTrendSlots.last?.month {
+                HStack {
+                    Text(monthlyBoundaryDateFormatter.string(from: first))
+                    Spacer()
+                    Text(monthlyBoundaryDateFormatter.string(from: last))
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
             }
         }
     }

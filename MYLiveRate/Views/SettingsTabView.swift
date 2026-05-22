@@ -20,6 +20,12 @@ struct SettingsTabView: View {
                 NavigationLink("接口密钥") {
                     APIKeySettingsView(viewModel: viewModel)
                 }
+
+#if DEBUG
+                NavigationLink("实验室") {
+                    DebugLabSettingsView()
+                }
+#endif
             }
             .navigationTitle("设置")
         }
@@ -55,6 +61,7 @@ private struct DefaultLandingTabSettingsView: View {
 
 private struct GeneralSettingsView: View {
     @AppStorage(appThemeStorageKey) private var appThemeRawValue: String = AppTheme.system.rawValue
+    @AppStorage(showAllExchangeRatesStorageKey) private var showAllExchangeRates = false
 
     private var selectedThemeBinding: Binding<AppTheme> {
         Binding(
@@ -72,6 +79,13 @@ private struct GeneralSettingsView: View {
                     }
                 }
                 .pickerStyle(.inline)
+            }
+
+            Section("汇率展示") {
+                Toggle("显示全量汇率列表", isOn: $showAllExchangeRates)
+                Text("打开后会在汇率页三种核心币种下方追加全量汇率列表。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
         .navigationTitle("通用设置")
@@ -158,3 +172,54 @@ private struct APIKeySettingsView: View {
         }
     }
 }
+
+#if DEBUG
+private struct DebugLabSettingsView: View {
+    @AppStorage(trendHintLabScenarioStorageKey) private var trendHintLabScenarioRawValue: String = TrendHintLabScenario.none.rawValue
+    @State private var isScenarioDialogPresented = false
+
+    private var selectedScenario: TrendHintLabScenario {
+        TrendHintLabScenario(rawValue: trendHintLabScenarioRawValue) ?? .none
+    }
+
+    var body: some View {
+        List {
+            Section("实验室") {
+                Button {
+                    isScenarioDialogPresented = true
+                } label: {
+                    HStack {
+                        Text("趋势提示测试场景")
+                        Spacer()
+                        Text(selectedScenario.displayName)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .foregroundStyle(.primary)
+            }
+        }
+        .navigationTitle("实验室")
+        .confirmationDialog("选择测试场景", isPresented: $isScenarioDialogPresented, titleVisibility: .visible) {
+            Button(TrendHintLabScenario.profitStreak4.displayName) {
+                trendHintLabScenarioRawValue = TrendHintLabScenario.profitStreak4.rawValue
+            }
+            Button(TrendHintLabScenario.lossStreak4.displayName) {
+                trendHintLabScenarioRawValue = TrendHintLabScenario.lossStreak4.rawValue
+            }
+            Button(TrendHintLabScenario.shortStreak3.displayName) {
+                trendHintLabScenarioRawValue = TrendHintLabScenario.shortStreak3.rawValue
+            }
+            Button(TrendHintLabScenario.latestZero.displayName) {
+                trendHintLabScenarioRawValue = TrendHintLabScenario.latestZero.rawValue
+            }
+            Button("恢复真实数据") {
+                trendHintLabScenarioRawValue = TrendHintLabScenario.none.rawValue
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("仅影响统计页的连续趋势提示文案，不会写入真实业务数据。")
+        }
+    }
+}
+#endif

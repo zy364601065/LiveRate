@@ -147,9 +147,15 @@ final class NetworkService {
             }
         }
 
+        var allRates = decoded.rates
+        if allRates[base.rawValue] == nil {
+            allRates[base.rawValue] = 1
+        }
+
         return RateSnapshot(
             updatedAt: Date(timeIntervalSince1970: decoded.time_last_update_unix),
-            rates: mappedRates
+            rates: mappedRates,
+            allRates: allRates
         )
     }
 

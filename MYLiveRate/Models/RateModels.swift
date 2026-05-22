@@ -1,9 +1,13 @@
 import Foundation
 
+let showAllExchangeRatesStorageKey = "myliverate.rates.show_all_exchange_rates.v1"
+
 enum Currency: String, CaseIterable, Identifiable {
     case USD
     case HKD
     case CNY
+
+    static let displayOrder: [Currency] = [.USD, .CNY, .HKD]
 
     var id: String { rawValue }
 
@@ -184,6 +188,7 @@ struct RateResponse: Decodable {
 struct RateSnapshot {
     let updatedAt: Date
     let rates: [Currency: Double]
+    let allRates: [String: Double]
 }
 
 struct StockQuote: Codable {

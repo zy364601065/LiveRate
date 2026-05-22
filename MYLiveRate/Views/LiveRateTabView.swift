@@ -5,6 +5,7 @@ import UIKit
 struct LiveRateTabView: View {
     @ObservedObject var viewModel: ExchangeRateViewModel
     @Binding var selectedPhotoItem: PhotosPickerItem?
+    @AppStorage(showAllExchangeRatesStorageKey) private var showAllExchangeRates = false
     @State private var isShowingImagePreview = false
     @FocusState private var isAmountFieldFocused: Bool
 
@@ -14,114 +15,158 @@ struct LiveRateTabView: View {
         return formatter
     }
 
+    private var chineseCurrencyLocale: Locale {
+        Locale(identifier: "zh_Hans_CN")
+    }
+
+    private func currencyDisplayName(for code: String) -> String {
+        let chineseName = chineseCurrencyLocale.localizedString(forCurrencyCode: code) ?? code
+        return "\(chineseName) (\(code))"
+    }
+
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("实时汇率")
-                    .font(.largeTitle.bold())
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("实时汇率")
+                        .font(.largeTitle.bold())
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("输入金额")
-                        .font(.headline)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("输入金额")
+                            .font(.headline)
 
-                    TextField("例如 100", text: $viewModel.amountText)
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($isAmountFieldFocused)
+                        TextField("例如 100", text: $viewModel.amountText)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($isAmountFieldFocused)
 
-                    HStack(alignment: .top, spacing: 12) {
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                            Label("上传图片识别美元金额", systemImage: "photo.on.rectangle")
-                                .font(.subheadline.weight(.semibold))
-                        }
-
-                        Spacer()
-
-                        if let imageData = viewModel.latestUploadThumbnailData,
-                           let image = UIImage(data: imageData) {
-                            Button {
-                                isShowingImagePreview = true
-                            } label: {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 100, height: 100)
-                                    .clipped()
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                        HStack(alignment: .top, spacing: 12) {
+                            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                Label("上传图片识别美元金额", systemImage: "photo.on.rectangle")
+                                    .font(.subheadline.weight(.semibold))
                             }
-                            .buttonStyle(.plain)
-                        }
-                    }
 
-                    if viewModel.isRecognizingAmount {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("正在识别图片中的美元金额...")
+                            Spacer()
+
+                            if let imageData = viewModel.latestUploadThumbnailData,
+                               let image = UIImage(data: imageData) {
+                                Button {
+                                    isShowingImagePreview = true
+                                } label: {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 100, height: 100)
+                                        .clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        if viewModel.isRecognizingAmount {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("正在识别图片中的美元金额...")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if let ocrMessage = viewModel.ocrMessage {
+                            Text(ocrMessage)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
+
+                        Picker(
+                            "基准货币",
+                            selection: Binding(
+                                get: { viewModel.baseCurrency },
+                                set: { viewModel.updateBaseCurrency($0) }
+                            )
+                        ) {
+                            ForEach(Currency.displayOrder) { currency in
+                                Text(currency.displayName).tag(currency)
+                            }
+                        }
+                        .pickerStyle(.menu)
                     }
 
-                    if let ocrMessage = viewModel.ocrMessage {
-                        Text(ocrMessage)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("实时等价值")
+                            .font(.headline)
+
+                        ForEach(viewModel.targetCurrencies) { currency in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(currency.displayName)
+                                        .font(.headline)
+                                    Text(viewModel.rateText(for: currency))
+                                        .font(.footnote)
+                                        .foregroundStyle(.blue)
+                                }
+
+                                Text(viewModel.formatAmount(
+                                    viewModel.convertedAmount(for: currency),
+                                    currency: currency
+                                ))
+                                .font(.system(size: 28, weight: .bold))
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                        }
+                    }
+
+                    if showAllExchangeRates {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("全量汇率")
+                                .font(.headline)
+
+                            ForEach(viewModel.sortedAllRateRows, id: \.code) { row in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                        Text(currencyDisplayName(for: row.code))
+                                            .font(.headline)
+                                        Text(viewModel.rateText(for: row.code))
+                                            .font(.footnote)
+                                            .foregroundStyle(.blue)
+                                    }
+
+                                    Text(viewModel.formatAmount(
+                                        viewModel.convertedAmount(for: row.code),
+                                        code: row.code
+                                    ))
+                                        .font(.system(size: 28, weight: .bold))
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                            }
+                        }
+                    }
+
+                    if let updatedAt = viewModel.lastUpdatedAt {
+                        Text("最后更新：\(dateFormatter.string(from: updatedAt))")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
 
-                    Picker(
-                        "基准货币",
-                        selection: Binding(
-                            get: { viewModel.baseCurrency },
-                            set: { viewModel.updateBaseCurrency($0) }
-                        )
-                    ) {
-                        ForEach(Currency.allCases) { currency in
-                            Text(currency.displayName).tag(currency)
-                        }
+                    if let errorMessage = viewModel.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
                     }
-                    .pickerStyle(.menu)
-                }
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("实时等价值")
-                        .font(.headline)
-
-                    ForEach(viewModel.targetCurrencies) { currency in
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(currency.displayName)
-                                .font(.headline)
-
-                            Text(viewModel.rateText(for: currency))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-
-                            Text(viewModel.formatAmount(
-                                viewModel.convertedAmount(for: currency),
-                                currency: currency
-                            ))
-                            .font(.system(size: 32, weight: .bold))
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                    if !showAllExchangeRates {
+                        Spacer(minLength: 0)
                     }
                 }
-
-                if let updatedAt = viewModel.lastUpdatedAt {
-                    Text("最后更新：\(dateFormatter.string(from: updatedAt))")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let errorMessage = viewModel.errorMessage {
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
-
-                Spacer()
+                .padding()
             }
-            .padding()
             .contentShape(Rectangle())
             .onTapGesture {
                 isAmountFieldFocused = false

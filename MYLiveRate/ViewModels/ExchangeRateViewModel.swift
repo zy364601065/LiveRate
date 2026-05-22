@@ -4,10 +4,15 @@ import UIKit
 
 @MainActor
 final class ExchangeRateViewModel: ObservableObject {
-    @Published var amountText = "1"
+    @Published var amountText = "1" {
+        didSet {
+            persistAmountText()
+        }
+    }
     @Published var baseCurrency: Currency = .USD
     @Published var statsDisplayCurrency: Currency = .USD
     @Published var rates: [Currency: Double] = [:]
+    @Published var allRates: [String: Double] = [:]
     @Published var lastUpdatedAt: Date?
     @Published var isLoading = false
     @Published var isRecognizingAmount = false
@@ -60,6 +65,7 @@ final class ExchangeRateViewModel: ObservableObject {
     private let ocrService = DollarOCRService()
     private let holdingsOCRService = HoldingsOCRService()
     private let uploadRecordsStorageKey = "myliverate.upload_records.v1"
+    private let amountTextStorageKey = "myliverate.amount_text.v1"
     private let latestThumbnailStorageKey = "myliverate.latest_upload_thumbnail.v1"
     private let holdingRecordsStorageKey = "myliverate.holding_records.v1"
     private let stockSymbolStorageKey = "myliverate.stock_symbol.v1"
@@ -71,6 +77,7 @@ final class ExchangeRateViewModel: ObservableObject {
     private static let usMarketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
 
     init() {
+        amountText = loadPersistedAmountText()
         uploadRecords = loadPersistedUploadRecords()
         latestUploadThumbnailData = UserDefaults.standard.data(forKey: latestThumbnailStorageKey)
         holdingRecords = loadPersistedHoldingRecords()
@@ -85,7 +92,7 @@ final class ExchangeRateViewModel: ObservableObject {
     }
 
     var targetCurrencies: [Currency] {
-        Currency.allCases.filter { $0 != baseCurrency }
+        Currency.displayOrder.filter { $0 != baseCurrency }
     }
 
     var marketCalendar: Calendar {
@@ -121,6 +128,7 @@ final class ExchangeRateViewModel: ObservableObject {
         do {
             let snapshot = try await networkService.fetch(base: baseCurrency)
             rates = snapshot.rates
+            allRates = snapshot.allRates
             lastUpdatedAt = snapshot.updatedAt
         } catch {
             errorMessage = "汇率更新失败，请稍后重试"
@@ -392,6 +400,34 @@ final class ExchangeRateViewModel: ObservableObject {
         return String(format: "1 %@ = %.4f %@", baseCurrency.rawValue, rate, target.rawValue)
     }
 
+    func rateText(for code: String) -> String {
+        guard let rate = allRates[code] else {
+            return "--"
+        }
+
+        return String(format: "1 %@ = %.4f %@", baseCurrency.rawValue, rate, code)
+    }
+
+    func convertedAmount(for code: String) -> Double? {
+        guard let amount = parseAmountText(amountText),
+              let rate = allRates[code] else {
+            return nil
+        }
+
+        return amount * rate
+    }
+
+    var sortedAllRateRows: [(code: String, rate: Double)] {
+        allRates
+            .map { (code: $0.key, rate: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.code == rhs.code {
+                    return lhs.rate < rhs.rate
+                }
+                return lhs.code < rhs.code
+            }
+    }
+
     func formatAmount(_ value: Double?, currency: Currency, fractionDigits: Int = 2) -> String {
         guard let value else { return "--" }
 
@@ -402,6 +438,18 @@ final class ExchangeRateViewModel: ObservableObject {
 
         let number = formatter.string(from: NSNumber(value: value)) ?? String(format: "%0.2f", value)
         return "\(number) \(currency.rawValue)"
+    }
+
+    func formatAmount(_ value: Double?, code: String, fractionDigits: Int = 2) -> String {
+        guard let value else { return "--" }
+
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = fractionDigits
+        formatter.maximumFractionDigits = fractionDigits
+
+        let number = formatter.string(from: NSNumber(value: value)) ?? String(format: "%0.2f", value)
+        return "\(number) \(code)"
     }
 
     private func usdToTargetRate(target: Currency) -> Double? {
@@ -424,6 +472,19 @@ final class ExchangeRateViewModel: ObservableObject {
         formatter.maximumFractionDigits = 2
         formatter.numberStyle = .decimal
         return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+
+    private func persistAmountText() {
+        UserDefaults.standard.set(amountText, forKey: amountTextStorageKey)
+    }
+
+    private func loadPersistedAmountText() -> String {
+        let stored = UserDefaults.standard.string(forKey: amountTextStorageKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let stored, !stored.isEmpty {
+            return stored
+        }
+        return "1"
     }
 
     private func parseAmountText(_ text: String) -> Double? {

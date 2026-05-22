@@ -2,6 +2,24 @@ import SwiftUI
 import Charts
 
 struct StatsDashboardView: View {
+    private enum ConsecutiveTrendType {
+        case profit
+        case loss
+    }
+
+    private struct ConsecutiveTrendStatus {
+        let type: ConsecutiveTrendType
+        let streakCount: Int
+    }
+
+    private struct ConsecutiveTrendHint {
+        let emoji: String
+        let message: String
+        let detail: String
+        let accentColor: Color
+        let backgroundColor: Color
+    }
+
     private struct DailyTrendSlot: Identifiable {
         let day: Date
         let amount: Double?
@@ -18,7 +36,16 @@ struct StatsDashboardView: View {
         var id: Date { month }
     }
 
+    private struct WeeklyTrendSlot: Identifiable {
+        let weekStart: Date
+        let amount: Double?
+        let plotDate: Date
+
+        var id: Date { weekStart }
+    }
+
     private enum SummaryPeriod: String, CaseIterable, Identifiable {
+        case currentWeek = "本周"
         case currentMonth = "本月"
         case allTime = "总计"
         var id: String { rawValue }
@@ -42,12 +69,37 @@ struct StatsDashboardView: View {
     @State private var selectedDailySlotDate: Date = Date()
     @State private var monthlyChartScrollPosition: Date = Date()
     @State private var selectedMonthlySlotDate: Date = Date()
+    @State private var weeklyChartScrollPosition: Date = Date()
+    @State private var selectedWeeklySlotDate: Date = Date()
     @State private var calendarGridWidth: CGFloat = 0
     @State private var hasInitializedSelection = false
+    @State private var displayedConsecutiveTrendHint: ConsecutiveTrendHint?
+#if DEBUG
+    @AppStorage(trendHintLabScenarioStorageKey) private var trendHintLabScenarioRawValue: String = TrendHintLabScenario.none.rawValue
+#endif
     private let trendPeriodOptions: [TrendPeriod] = [.daily, .monthly]
     private let calendarCellSpacing: CGFloat = 2
     private let dailyVisibleDays = 7
+    private let weeklyVisibleWeeks = 8
     private let monthlyVisibleMonths = 6
+    private static let profitHintQueueStorageKey = "myliverate.stats.profit_hint_queue.v1"
+    private static let lossHintQueueStorageKey = "myliverate.stats.loss_hint_queue.v1"
+    private static let profitMessages = [
+        "巴菲特也不过如此！继续冲！📈",
+        "这连胜猛得离谱，市场都在给你跪！",
+        "狠！股神看了都得喊你大哥！",
+        "赚钱机器全功率启动，无敌了！",
+        "连胜这气势，直接封神！散户之王就是你！",
+        "牛到炸裂！华尔街都得给你打Call！"
+    ]
+    private static let lossMessages = [
+        "暂时回撤而已，猛龙过江，早晚翻盘！",
+        "亏就亏了，爷们儿从来不怕！养精蓄锐下一波干翻它！",
+        "连续亏损算什么？真正的强者都是从深坑里爬起来的！",
+        "稳住！这只是市场在给你加燃料，后面爆炸式反弹等着你！",
+        "别慌！亏损是给牛人准备的试炼，挺过去就是王者！",
+        "回撤很正常，继续执行策略，下次直接暴击！"
+    ]
 
     private var marketCalendar: Calendar {
         var calendar = viewModel.marketCalendar
@@ -365,6 +417,148 @@ struct StatsDashboardView: View {
         return calendar.date(byAdding: .day, value: days / 2, to: monthStart) ?? monthStart
     }
 
+    private var weeklyTrendRows: [TrendDataPoint] {
+        viewModel.trendRows(for: viewModel.statsDisplayCurrency, period: .weekly)
+    }
+
+    private var weeklyTrendSlots: [WeeklyTrendSlot] {
+        let calendar = marketCalendar
+        guard let latestDataWeekStart = weeklyTrendRows.last?.periodStart else {
+            let currentWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+            return [WeeklyTrendSlot(weekStart: currentWeek, amount: nil, plotDate: midWeekInMarketCalendar(for: currentWeek))]
+        }
+
+        guard let startWeek = calendar.date(byAdding: .weekOfYear, value: -11, to: latestDataWeekStart) else {
+            return []
+        }
+        let amountByWeek = Dictionary(uniqueKeysWithValues: weeklyTrendRows.map {
+            ($0.periodStart, $0.amount)
+        })
+
+        var slots: [WeeklyTrendSlot] = []
+        var cursor = startWeek
+        while cursor <= latestDataWeekStart {
+            slots.append(
+                WeeklyTrendSlot(
+                    weekStart: cursor,
+                    amount: amountByWeek[cursor],
+                    plotDate: midWeekInMarketCalendar(for: cursor)
+                )
+            )
+            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: cursor) else {
+                break
+            }
+            cursor = next
+        }
+        return slots
+    }
+
+    private var weeklyTrendYDomain: ClosedRange<Double> {
+        let absMax = weeklyTrendSlots
+            .compactMap(\.amount)
+            .map { abs($0) }
+            .max() ?? 0
+        let padded = max(absMax * 1.2, 1)
+        return (-padded)...padded
+    }
+
+    private var selectedWeeklySlot: WeeklyTrendSlot? {
+        weeklyTrendSlots.first {
+            marketCalendar.isDate($0.weekStart, equalTo: selectedWeeklySlotDate, toGranularity: .weekOfYear)
+        } ?? weeklyTrendSlots.last
+    }
+
+    private var latestWeeklyDataSlot: WeeklyTrendSlot? {
+        weeklyTrendSlots.last { $0.amount != nil } ?? weeklyTrendSlots.last
+    }
+
+    private var selectedWeeklySlotAmount: Double {
+        selectedWeeklySlot?.amount ?? 0
+    }
+
+    private var selectedWeeklySlotAmountText: String {
+        String(format: "%+.2f", selectedWeeklySlotAmount)
+    }
+
+    private var selectedWeeklySlotAmountColor: Color {
+        if selectedWeeklySlotAmount > 0 { return .red }
+        if selectedWeeklySlotAmount < 0 { return .green }
+        return .secondary
+    }
+
+    private var selectedWeeklyRuleColor: Color {
+        guard let amount = selectedWeeklySlot?.amount else { return .gray }
+        if amount > 0 { return .red }
+        if amount < 0 { return .green }
+        return .gray
+    }
+
+    private var selectedWeeklyDateText: String {
+        guard let weekStart = selectedWeeklySlot?.weekStart else { return "--" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = marketCalendar.timeZone
+        formatter.dateFormat = "yyyy年"
+        let yearText = formatter.string(from: weekStart)
+        let weekNumber = marketCalendar.component(.weekOfYear, from: weekStart)
+        return "\(yearText)第\(weekNumber)周"
+    }
+
+    private var weeklyBoundaryDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = marketCalendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }
+
+    private var weeklyChartXDomain: ClosedRange<Date> {
+        guard let first = weeklyTrendSlots.first?.plotDate,
+              let last = weeklyTrendSlots.last?.plotDate else {
+            let now = Date()
+            return now...now
+        }
+        let padding = halfVisibleWeeklyTimeInterval
+        let start = first.addingTimeInterval(-padding)
+        let end = last.addingTimeInterval(padding)
+        return start...end
+    }
+
+    private var halfVisibleWeeklyTimeInterval: TimeInterval {
+        (Double(weeklyVisibleWeeks) / 2.0) * 7 * 24 * 3600
+    }
+
+    private var weeklyCenteredPlotDateFromScroll: Date {
+        weeklyChartScrollPosition.addingTimeInterval(halfVisibleWeeklyTimeInterval)
+    }
+
+    private func leadingDateForWeeklyCenteredFocus(_ focusDate: Date) -> Date {
+        focusDate.addingTimeInterval(-halfVisibleWeeklyTimeInterval)
+    }
+
+    private func syncWeeklySelectionFromScrollPosition(_ leadingDate: Date) {
+        let centerDate = leadingDate.addingTimeInterval(halfVisibleWeeklyTimeInterval)
+        guard let nearest = weeklyTrendSlots.min(by: {
+            abs($0.plotDate.timeIntervalSince(centerDate)) < abs($1.plotDate.timeIntervalSince(centerDate))
+        }) else {
+            return
+        }
+
+        if !marketCalendar.isDate(selectedWeeklySlotDate, equalTo: nearest.weekStart, toGranularity: .weekOfYear) {
+            selectedWeeklySlotDate = nearest.weekStart
+        }
+    }
+
+    private func alignSelectedWeeklySlotToLatest() {
+        guard let target = latestWeeklyDataSlot else { return }
+        selectedWeeklySlotDate = target.weekStart
+        weeklyChartScrollPosition = leadingDateForWeeklyCenteredFocus(target.plotDate)
+    }
+
+    private func midWeekInMarketCalendar(for weekStart: Date) -> Date {
+        marketCalendar.date(byAdding: .day, value: 3, to: weekStart) ?? weekStart
+    }
+
     private var selectedDayEntries: [DayUploadEntry] {
         viewModel.uploadEntries(on: selectedDay, currency: viewModel.statsDisplayCurrency)
     }
@@ -392,6 +586,249 @@ struct StatsDashboardView: View {
             return total
         }
     }
+
+    private var summaryDisplayAmount: Double {
+        if summaryPeriod == .currentWeek {
+            let range = currentWeekRange
+            return monthAmountMap.reduce(0) { total, pair in
+                if pair.key >= range.start && pair.key <= range.end {
+                    return total + pair.value
+                }
+                return total
+            }
+        }
+
+        if summaryPeriod == .currentMonth {
+            return currentMonthTotalAmount
+        }
+
+        return viewModel.dailyTotalAmount(for: viewModel.statsDisplayCurrency) ?? 0
+    }
+
+    private var currentMonthCumulativePeak: (day: Date, total: Double)? {
+        let calendar = marketCalendar
+        let monthRows = rows
+            .filter { calendar.isDate($0.day, equalTo: displayedMonth, toGranularity: .month) }
+            .map { (day: calendar.startOfDay(for: $0.day), amount: $0.convertedAmount) }
+            .sorted { $0.day < $1.day }
+
+        guard !monthRows.isEmpty else {
+            return nil
+        }
+
+        var runningTotal = 0.0
+        var peak = (day: monthRows[0].day, total: -Double.greatestFiniteMagnitude)
+
+        for row in monthRows {
+            runningTotal += row.amount
+            if runningTotal > peak.total {
+                peak = (day: row.day, total: runningTotal)
+            }
+        }
+
+        return peak
+    }
+
+    private func dayText(_ day: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = marketCalendar.timeZone
+        formatter.dateFormat = "M月d日"
+        return formatter.string(from: day)
+    }
+
+    private var summaryHeaderText: String {
+        switch summaryPeriod {
+        case .currentWeek:
+            return "本周区间：\(currentWeekRangeText)"
+        case .currentMonth:
+            if let peak = currentMonthCumulativePeak {
+                let amountText = viewModel.formatAmount(peak.total, currency: viewModel.statsDisplayCurrency)
+                return "本月累计顶峰日：\(dayText(peak.day))  \(amountText)"
+            }
+            return "本月累计顶峰日：--"
+        case .allTime:
+            return "总计"
+        }
+    }
+
+    private var summaryHeaderColor: Color {
+        switch summaryPeriod {
+        case .currentWeek:
+            return .blue
+        case .currentMonth:
+            return .red
+        case .allTime:
+            return .secondary
+        }
+    }
+
+    private var summaryMainAmount: Double {
+        summaryDisplayAmount
+    }
+
+    private var currentWeekRange: (start: Date, end: Date) {
+        var mondayCalendar = marketCalendar
+        mondayCalendar.firstWeekday = 2
+        mondayCalendar.minimumDaysInFirstWeek = 4
+
+        let today = mondayCalendar.startOfDay(for: Date())
+        let components = mondayCalendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        let start = mondayCalendar.date(from: components) ?? today
+        return (start: start, end: today)
+    }
+
+    private var currentWeekRangeText: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = marketCalendar.timeZone
+        formatter.dateFormat = "M月d日"
+        let range = currentWeekRange
+        return "\(formatter.string(from: range.start))-\(formatter.string(from: range.end))"
+    }
+
+    private func currentConsecutiveTrendStatus() -> ConsecutiveTrendStatus? {
+        let calendar = marketCalendar
+        let hintInput = consecutiveTrendHintInput(calendar: calendar)
+        let amountByDay = hintInput.amountByDay
+        let latestDataDay = hintInput.latestDataDay
+        guard let latestAmount = amountByDay[latestDataDay] else {
+            return nil
+        }
+
+        if latestAmount == 0 {
+            return nil
+        }
+
+        let isProfit = latestAmount > 0
+        var streakCount = 0
+        var cursor = latestDataDay
+
+        while true {
+            guard let amount = amountByDay[cursor] else {
+                break
+            }
+
+            if isProfit {
+                guard amount > 0 else { break }
+            } else {
+                guard amount < 0 else { break }
+            }
+
+            streakCount += 1
+
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: cursor) else {
+                break
+            }
+            cursor = previousDay
+        }
+
+        guard streakCount >= 4 else {
+            return nil
+        }
+
+        return ConsecutiveTrendStatus(
+            type: isProfit ? .profit : .loss,
+            streakCount: streakCount
+        )
+    }
+
+    private func refreshConsecutiveTrendHint() {
+        guard let status = currentConsecutiveTrendStatus() else {
+            displayedConsecutiveTrendHint = nil
+            return
+        }
+
+        switch status.type {
+        case .profit:
+            displayedConsecutiveTrendHint = ConsecutiveTrendHint(
+                emoji: "📈",
+                message: nextConsecutiveTrendMessage(for: .profit),
+                detail: "已连续盈利 \(status.streakCount) 天",
+                accentColor: .red,
+                backgroundColor: Color.red.opacity(0.12)
+            )
+        case .loss:
+            displayedConsecutiveTrendHint = ConsecutiveTrendHint(
+                emoji: "🛟",
+                message: nextConsecutiveTrendMessage(for: .loss),
+                detail: "已连续亏损 \(status.streakCount) 天",
+                accentColor: .green,
+                backgroundColor: Color.green.opacity(0.12)
+            )
+        }
+    }
+
+    private func nextConsecutiveTrendMessage(for type: ConsecutiveTrendType) -> String {
+        let defaults = UserDefaults.standard
+        let storageKey: String
+        let allMessages: [String]
+
+        switch type {
+        case .profit:
+            storageKey = Self.profitHintQueueStorageKey
+            allMessages = Self.profitMessages
+        case .loss:
+            storageKey = Self.lossHintQueueStorageKey
+            allMessages = Self.lossMessages
+        }
+
+        var queue = (defaults.stringArray(forKey: storageKey) ?? [])
+            .filter { allMessages.contains($0) }
+
+        if queue.isEmpty {
+            queue = allMessages.shuffled()
+        }
+
+        let selected = queue.removeFirst()
+        defaults.set(queue, forKey: storageKey)
+        return selected
+    }
+
+    private func consecutiveTrendHintInput(calendar: Calendar) -> (latestDataDay: Date, amountByDay: [Date: Double]) {
+#if DEBUG
+        if let debugInput = debugConsecutiveTrendHintInput(calendar: calendar) {
+            return debugInput
+        }
+#endif
+        let amountByDay = monthAmountMap
+        let latestDataDay = rows.first?.day ?? calendar.startOfDay(for: Date())
+        return (latestDataDay, amountByDay)
+    }
+
+#if DEBUG
+    private var trendHintLabScenario: TrendHintLabScenario {
+        TrendHintLabScenario(rawValue: trendHintLabScenarioRawValue) ?? .none
+    }
+
+    private func debugConsecutiveTrendHintInput(calendar: Calendar) -> (latestDataDay: Date, amountByDay: [Date: Double])? {
+        let latestDataDay = calendar.startOfDay(for: Date())
+        let offsetsAndAmounts: [(Int, Double)]
+
+        switch trendHintLabScenario {
+        case .none:
+            return nil
+        case .profitStreak4:
+            offsetsAndAmounts = [(0, 120), (-1, 90), (-2, 60), (-3, 30)]
+        case .lossStreak4:
+            offsetsAndAmounts = [(0, -120), (-1, -90), (-2, -60), (-3, -30)]
+        case .shortStreak3:
+            offsetsAndAmounts = [(0, 120), (-1, 90), (-2, 60), (-3, -30)]
+        case .latestZero:
+            offsetsAndAmounts = [(0, 0), (-1, 120), (-2, 90), (-3, 60), (-4, 30)]
+        }
+
+        var amountByDay: [Date: Double] = [:]
+        for (offset, amount) in offsetsAndAmounts {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: latestDataDay) else {
+                continue
+            }
+            amountByDay[day] = amount
+        }
+
+        return (latestDataDay, amountByDay)
+    }
+#endif
 
     private func chartDateText(for date: Date) -> String {
         let formatter = DateFormatter()
@@ -576,6 +1013,7 @@ struct StatsDashboardView: View {
     }
 
     private func handleOnAppear() {
+        refreshConsecutiveTrendHint()
         guard !hasInitializedSelection else { return }
         hasInitializedSelection = true
 
@@ -590,6 +1028,7 @@ struct StatsDashboardView: View {
         
         DispatchQueue.main.async {
             self.alignSelectedDailySlotToLatest()
+            self.alignSelectedWeeklySlotToLatest()
             self.alignSelectedMonthlySlotToLatest()
         }
     }
@@ -612,7 +1051,7 @@ struct StatsDashboardView: View {
 
     private var currencyMenu: some View {
         Menu {
-            ForEach(Currency.allCases) { currency in
+            ForEach(Currency.displayOrder) { currency in
                 Button {
                     viewModel.statsDisplayCurrency = currency
                 } label: {
@@ -903,6 +1342,84 @@ struct StatsDashboardView: View {
         }
     }
 
+    private var weeklyTrendChart: some View {
+        VStack(spacing: 0) {
+            Text(selectedWeeklyDateText)
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            Text(selectedWeeklySlotAmountText)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(selectedWeeklySlotAmountColor)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 8)
+
+            Chart {
+                ForEach(weeklyTrendSlots) { slot in
+                    if let amount = slot.amount {
+                        switch trendChartStyle {
+                        case .bar:
+                            BarMark(
+                                x: .value("周", slot.plotDate),
+                                y: .value("金额", amount),
+                                width: .fixed(12)
+                            )
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                        case .line:
+                            LineMark(
+                                x: .value("周", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                        case .area:
+                            AreaMark(
+                                x: .value("周", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle((amount >= 0 ? Color.red : Color.green).opacity(0.35))
+                        case .scatter:
+                            PointMark(
+                                x: .value("周", slot.plotDate),
+                                y: .value("金额", amount)
+                            )
+                            .symbolSize(44)
+                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                        }
+                    }
+                }
+
+                RuleMark(y: .value("中轴", 0))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .foregroundStyle(.gray.opacity(0.45))
+
+                RuleMark(x: .value("中心线", weeklyCenteredPlotDateFromScroll))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(selectedWeeklyRuleColor)
+            }
+            .chartXScale(domain: weeklyChartXDomain)
+            .chartYScale(domain: weeklyTrendYDomain)
+            .chartScrollableAxes(.horizontal)
+            .chartXVisibleDomain(length: 60 * 60 * 24 * 7 * 8)
+            .chartScrollPosition(x: $weeklyChartScrollPosition)
+            .chartScrollTargetBehavior(.valueAligned(matching: DateComponents(timeZone: marketCalendar.timeZone, weekday: marketCalendar.firstWeekday)))
+            .chartXAxis(.hidden)
+            .frame(height: 220)
+
+            if let first = weeklyTrendSlots.first?.weekStart, let last = weeklyTrendSlots.last?.weekStart {
+                HStack {
+                    Text(weeklyBoundaryDateFormatter.string(from: first))
+                    Spacer()
+                    Text(weeklyBoundaryDateFormatter.string(from: last))
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+            }
+        }
+    }
+
     private var trendSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             trendHeader
@@ -916,7 +1433,7 @@ struct StatsDashboardView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                if !trendRows.isEmpty {
+                if !monthlyTrendSlots.isEmpty {
                     monthlyTrendChart
                 } else {
                     Text("该周期下至少需要一个数据点才能展示趋势")
@@ -941,17 +1458,34 @@ struct StatsDashboardView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 140)
+                .frame(width: 200)
             }
-            
-            let displayAmount = summaryPeriod == .currentMonth ? currentMonthTotalAmount : (viewModel.dailyTotalAmount(for: viewModel.statsDisplayCurrency) ?? 0)
-            
+
+            Text(summaryHeaderText)
+                .font(.footnote)
+                .foregroundStyle(summaryHeaderColor)
+
             Text(viewModel.formatAmount(
-                displayAmount,
+                summaryMainAmount,
                 currency: viewModel.statsDisplayCurrency
             ))
             .font(.system(size: 30, weight: .bold))
-            .foregroundStyle(displayAmount > 0 ? Color.red : (displayAmount < 0 ? Color.green : .primary))
+            .foregroundStyle(summaryMainAmount > 0 ? Color.red : (summaryMainAmount < 0 ? Color.green : .primary))
+
+            if let hint = displayedConsecutiveTrendHint {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(hint.emoji) \(hint.message)")
+                        .font(.footnote)
+                        .foregroundStyle(hint.accentColor)
+                    Text(hint.detail)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(hint.accentColor)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(hint.backgroundColor, in: RoundedRectangle(cornerRadius: 10))
+                .padding(.top, 2)
+            }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)

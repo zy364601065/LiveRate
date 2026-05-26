@@ -267,6 +267,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "众安助手";
 				INFOPLIST_KEY_CFBundleName = "众安助手";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要访问相册以选择截图并识别金额";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -302,6 +303,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "众安助手";
 				INFOPLIST_KEY_CFBundleName = "众安助手";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要访问相册以选择截图并识别金额";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

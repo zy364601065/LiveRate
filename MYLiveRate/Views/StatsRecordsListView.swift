@@ -49,6 +49,12 @@ struct StatsRecordsListView: View {
         viewModel.dailyAmountRows(for: viewModel.statsDisplayCurrency)
     }
 
+    private func signedAmountColor(_ value: Double) -> Color {
+        if value > 0 { return .red }
+        if value < 0 { return .green }
+        return .secondary
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Picker("查看模式", selection: $selectedTab) {
@@ -125,7 +131,7 @@ struct StatsRecordsListView: View {
                         Spacer()
                         Text(String(format: "%+.2f %@", entry.convertedAmount, viewModel.statsDisplayCurrency.rawValue))
                             .font(.subheadline.bold())
-                            .foregroundStyle(entry.convertedAmount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(entry.convertedAmount))
                     }
                     .padding(.vertical, 6)
 
@@ -170,7 +176,7 @@ struct StatsRecordsListView: View {
                                 currency: viewModel.statsDisplayCurrency
                             ))
                             .monospacedDigit()
-                            .foregroundStyle(row.convertedAmount > 0 ? Color.red : (row.convertedAmount < 0 ? Color.green : .primary))
+                            .foregroundStyle(signedAmountColor(row.convertedAmount))
                         }
                         .font(.subheadline)
                         .padding(.vertical, 10)

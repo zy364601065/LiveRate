@@ -127,6 +127,17 @@ struct StatsDashboardView: View {
         viewModel.dailyAmountRows(for: viewModel.statsDisplayCurrency)
     }
 
+    private func signedAmountColor(_ value: Double, zeroColor: Color = .secondary) -> Color {
+        if value > 0 { return .red }
+        if value < 0 { return .green }
+        return zeroColor
+    }
+
+    private func signedRuleColor(_ value: Double?) -> Color {
+        guard let value else { return .gray }
+        return signedAmountColor(value, zeroColor: .gray)
+    }
+
     private var trendRows: [TrendDataPoint] {
         viewModel.trendRows(for: viewModel.statsDisplayCurrency, period: trendPeriod)
     }
@@ -188,16 +199,11 @@ struct StatsDashboardView: View {
     }
 
     private var selectedDailySlotAmountColor: Color {
-        if selectedDailySlotAmount > 0 { return .red }
-        if selectedDailySlotAmount < 0 { return .green }
-        return .secondary
+        signedAmountColor(selectedDailySlotAmount)
     }
 
     private var selectedDailyRuleColor: Color {
-        guard let amount = selectedDailySlot?.amount else { return .gray }
-        if amount > 0 { return .red }
-        if amount < 0 { return .green }
-        return .gray
+        signedRuleColor(selectedDailySlot?.amount)
     }
 
     private var selectedDailyDateText: String {
@@ -337,16 +343,11 @@ struct StatsDashboardView: View {
     }
 
     private var selectedMonthlySlotAmountColor: Color {
-        if selectedMonthlySlotAmount > 0 { return .red }
-        if selectedMonthlySlotAmount < 0 { return .green }
-        return .secondary
+        signedAmountColor(selectedMonthlySlotAmount)
     }
 
     private var selectedMonthlyRuleColor: Color {
-        guard let amount = selectedMonthlySlot?.amount else { return .gray }
-        if amount > 0 { return .red }
-        if amount < 0 { return .green }
-        return .gray
+        signedRuleColor(selectedMonthlySlot?.amount)
     }
 
     private var selectedMonthlyDateText: String {
@@ -481,16 +482,11 @@ struct StatsDashboardView: View {
     }
 
     private var selectedWeeklySlotAmountColor: Color {
-        if selectedWeeklySlotAmount > 0 { return .red }
-        if selectedWeeklySlotAmount < 0 { return .green }
-        return .secondary
+        signedAmountColor(selectedWeeklySlotAmount)
     }
 
     private var selectedWeeklyRuleColor: Color {
-        guard let amount = selectedWeeklySlot?.amount else { return .gray }
-        if amount > 0 { return .red }
-        if amount < 0 { return .green }
-        return .gray
+        signedRuleColor(selectedWeeklySlot?.amount)
     }
 
     private var selectedWeeklyDateText: String {
@@ -1205,28 +1201,28 @@ struct StatsDashboardView: View {
                                 y: .value("金额", amount),
                                 width: .fixed(9)
                             )
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         case .line:
                             LineMark(
                                 x: .value("日期", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .interpolationMethod(.catmullRom)
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         case .area:
                             AreaMark(
                                 x: .value("日期", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .interpolationMethod(.catmullRom)
-                            .foregroundStyle((amount >= 0 ? Color.red : Color.green).opacity(0.35))
+                            .foregroundStyle(signedAmountColor(amount).opacity(0.35))
                         case .scatter:
                             PointMark(
                                 x: .value("日期", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .symbolSize(40)
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         }
                     }
                 }
@@ -1283,28 +1279,28 @@ struct StatsDashboardView: View {
                                 y: .value("金额", amount),
                                 width: .fixed(14)
                             )
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         case .line:
                             LineMark(
                                 x: .value("月份", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .interpolationMethod(.catmullRom)
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         case .area:
                             AreaMark(
                                 x: .value("月份", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .interpolationMethod(.catmullRom)
-                            .foregroundStyle((amount >= 0 ? Color.red : Color.green).opacity(0.35))
+                            .foregroundStyle(signedAmountColor(amount).opacity(0.35))
                         case .scatter:
                             PointMark(
                                 x: .value("月份", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .symbolSize(48)
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         }
                     }
                 }
@@ -1364,28 +1360,28 @@ struct StatsDashboardView: View {
                                 y: .value("金额", amount),
                                 width: .fixed(12)
                             )
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         case .line:
                             LineMark(
                                 x: .value("周", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .interpolationMethod(.catmullRom)
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         case .area:
                             AreaMark(
                                 x: .value("周", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .interpolationMethod(.catmullRom)
-                            .foregroundStyle((amount >= 0 ? Color.red : Color.green).opacity(0.35))
+                            .foregroundStyle(signedAmountColor(amount).opacity(0.35))
                         case .scatter:
                             PointMark(
                                 x: .value("周", slot.plotDate),
                                 y: .value("金额", amount)
                             )
                             .symbolSize(44)
-                            .foregroundStyle(amount >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedAmountColor(amount))
                         }
                     }
                 }
@@ -1470,7 +1466,7 @@ struct StatsDashboardView: View {
                 currency: viewModel.statsDisplayCurrency
             ))
             .font(.system(size: 30, weight: .bold))
-            .foregroundStyle(summaryMainAmount > 0 ? Color.red : (summaryMainAmount < 0 ? Color.green : .primary))
+            .foregroundStyle(signedAmountColor(summaryMainAmount, zeroColor: .primary))
 
             if let hint = displayedConsecutiveTrendHint {
                 VStack(alignment: .leading, spacing: 4) {

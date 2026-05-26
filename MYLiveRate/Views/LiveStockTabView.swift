@@ -12,6 +12,12 @@ struct LiveStockTabView: View {
         return formatter
     }
 
+    private func signedChangeColor(_ value: Double) -> Color {
+        if value > 0 { return .red }
+        if value < 0 { return .green }
+        return .secondary
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -48,7 +54,7 @@ struct LiveStockTabView: View {
                                 Text(String(format: "%+.2f%%", quote.changePercent))
                                     .font(.system(size: 30, weight: .bold))
                             }
-                            .foregroundStyle(quote.change >= 0 ? Color.red : Color.green)
+                            .foregroundStyle(signedChangeColor(quote.change))
                             .monospacedDigit()
                         }
                     }
@@ -193,7 +199,7 @@ struct LiveStockTabView: View {
 
                 Text(String(format: "%+.2f%%", item.quote.changePercent))
                     .font(.subheadline.bold())
-                    .foregroundStyle(item.quote.change >= 0 ? Color.red : Color.green)
+                    .foregroundStyle(signedChangeColor(item.quote.change))
                     .monospacedDigit()
             }
         }
@@ -218,7 +224,7 @@ struct LiveStockTabView: View {
                 Text(String(format: "%+.2f%%", item.quote.changePercent))
                     .font(.subheadline.bold())
             }
-            .foregroundStyle(item.quote.change >= 0 ? Color.red : Color.green)
+            .foregroundStyle(signedChangeColor(item.quote.change))
             .monospacedDigit()
         }
     }

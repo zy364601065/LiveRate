@@ -82,8 +82,8 @@ private struct GeneralSettingsView: View {
             }
 
             Section("汇率展示") {
-                Toggle("显示全量汇率列表", isOn: $showAllExchangeRates)
-                Text("打开后会在汇率页三种核心币种下方追加全量汇率列表。")
+                Toggle("显示其他汇率", isOn: $showAllExchangeRates)
+                Text("打开后会在汇率页核心币种下方追加其他币种卡片。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

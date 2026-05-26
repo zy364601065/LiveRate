@@ -198,7 +198,9 @@ struct HoldingsTabView: View {
 
     private func signedColor(_ value: Double?) -> Color {
         guard let value else { return .primary }
-        return value >= 0 ? .red : .green
+        if value > 0 { return .red }
+        if value < 0 { return .green }
+        return .primary
     }
 
     private func formattedNumber(_ value: Double?) -> String {

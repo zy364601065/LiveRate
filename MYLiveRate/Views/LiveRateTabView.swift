@@ -12,15 +12,27 @@ struct LiveRateTabView: View {
     @State private var isShowingPhotoPermissionAlert = false
     @FocusState private var isAmountFieldFocused: Bool
 
-    private let rateTint = Color(red: 0.98, green: 0.20, blue: 0.30)
+    private let profitColor = Color(red: 0.86, green: 0.16, blue: 0.22)
+    private let lossColor = Color(red: 0.08, green: 0.58, blue: 0.38)
+    private let navy = Color(red: 0.06, green: 0.10, blue: 0.18)
+    private let accentBlue = Color(red: 0.72, green: 0.46, blue: 0.22)
+    private let pageBg = Color(red: 0.98, green: 0.97, blue: 0.94)
+    private let coreRateCodes = ["CNY", "HKD"]
     private let rateGridColumns = [
         GridItem(.flexible(), spacing: 10),
         GridItem(.flexible(), spacing: 10)
     ]
 
+    private var highlightRateCodes: [String] {
+        var codes = coreRateCodes
+        if !codes.contains("EUR") { codes.append("EUR") }
+        if !codes.contains("JPY") { codes.append("JPY") }
+        return codes
+    }
+
     private var otherRateRows: [(code: String, rate: Double)] {
-        let coreCodes = Set(Currency.displayOrder.map(\.rawValue))
-        return viewModel.sortedAllRateRows.filter { !coreCodes.contains($0.code) }
+        let highlighted = Set(highlightRateCodes)
+        return viewModel.sortedAllRateRows.filter { !highlighted.contains($0.code) }
     }
 
     private var amountValue: Double {
@@ -30,13 +42,6 @@ struct LiveRateTabView: View {
             .replacingOccurrences(of: "，", with: "")
             .replacingOccurrences(of: "−", with: "-")
         return Double(normalized) ?? 0
-    }
-
-    private var usdDisplayAmount: String {
-        let absValue = abs(amountValue)
-        let formatted = viewModel.formatAmount(absValue, code: "USD")
-        let trimmed = formatted.replacingOccurrences(of: " USD", with: "")
-        return amountValue >= 0 ? "+\(trimmed)" : "-\(trimmed)"
     }
 
     private var profitLossColor: Color {
@@ -58,63 +63,43 @@ struct LiveRateTabView: View {
         return "\(chineseName) \(code)"
     }
 
-    private func icon(for code: String) -> String {
+    private func iconName(for code: String) -> String {
         switch code {
-        case "CNY": return "🇨🇳"
-        case "HKD": return "🇭🇰"
-        case "USD": return "🇺🇸"
-        default: return "🌐"
+        case "CNY": return "yensign.circle.fill"
+        case "HKD": return "dollarsign.circle.fill"
+        case "USD": return "dollarsign.square.fill"
+        case "EUR": return "eurosign.circle.fill"
+        case "JPY": return "yensign.square.fill"
+        default: return "globe.americas.fill"
         }
     }
 
     private func signedAmountColor(_ value: Double?) -> Color {
         guard let value else { return .secondary }
-        if value < 0 {
-            return Color(red: 0.09, green: 0.71, blue: 0.45)
-        }
-        if value > 0 {
-            return rateTint
-        }
+        if value < 0 { return lossColor }
+        if value > 0 { return profitColor }
         return .secondary
     }
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     headerSection
-                    heroSection
                     inputSection
-                    pairCardsSection
+                    coreRatesSection
 
                     if showAllExchangeRates {
                         allRatesSection
                     }
 
-                    if let updatedAt = viewModel.lastUpdatedAt {
-                        Text("最后更新：\(dateFormatter.string(from: updatedAt))")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let errorMessage = viewModel.errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
+                    statusSection
                 }
                 .padding(.horizontal, 14)
-                .padding(.top, 0)
-                .padding(.bottom, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 18)
             }
-            .background(
-                LinearGradient(
-                    colors: [Color(.systemGray6), Color(.systemBackground)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-            )
+            .background(pageBackground.ignoresSafeArea())
             .contentShape(Rectangle())
             .onTapGesture {
                 isAmountFieldFocused = false
@@ -152,91 +137,132 @@ struct LiveRateTabView: View {
             } message: {
                 Text("请在系统设置中允许访问相册，才能选择截图并识别金额。")
             }
+            .onAppear {
+                enforceUSDBaseIfNeeded()
+            }
         }
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("实时汇率")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                    Text("精准换算 · 汇率更新")
-                        .font(.caption)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("汇率")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(navy)
+                    Text("美元基准 · 实时更新")
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
+
                 Spacer()
+
+                Button {
+                    Task { await viewModel.refresh() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .tint(accentBlue)
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        Text(viewModel.isLoading ? "刷新中" : "刷新")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.thinMaterial, in: Capsule())
+                    .overlay {
+                        Capsule().stroke(.white.opacity(0.52), lineWidth: 1)
+                    }
+                    .foregroundStyle(accentBlue)
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.isLoading)
+            }
+
+            HStack(spacing: 8) {
+                statusTag(icon: "clock.badge.checkmark", text: viewModel.lastUpdatedAt.map { "更新 \(dateFormatter.string(from: $0))" } ?? "等待同步")
+                statusTag(icon: "photo.badge.plus", text: "记录 \(viewModel.uploadRecords.count) 条")
             }
         }
+        .padding(12)
+        .background(glassCard(cornerRadius: 18, tint: Color.white.opacity(0.18)))
     }
 
-    private var heroSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label("今日盈亏", systemImage: "info.circle")
-                    .font(.footnote.weight(.semibold))
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-            }
-
-            Text(usdDisplayAmount)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(profitLossColor)
+    private func statusTag(icon: String, text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+            Text(text)
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
         }
-        .padding(9)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(navy.opacity(0.85))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.regularMaterial, in: Capsule())
     }
 
     private var inputSection: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 9) {
             Text("输入美元金额")
                 .font(.footnote.weight(.semibold))
+                .foregroundStyle(navy)
 
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(red: 1.0, green: 0.93, blue: 0.95))
+                        .fill(Color(red: 0.99, green: 0.93, blue: 0.94))
                         .frame(width: 34, height: 34)
                         .overlay {
                             Text("$")
                                 .font(.system(size: 20, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color(red: 0.98, green: 0.20, blue: 0.30))
+                                .foregroundStyle(profitColor)
                         }
 
                     TextField("2,126.72", text: $viewModel.amountText)
-                        .font(.system(size: 21, weight: .semibold, design: .rounded))
+                        .font(.system(size: 19, weight: .semibold, design: .rounded))
                         .foregroundStyle(profitLossColor)
                         .keyboardType(.decimalPad)
                         .focused($isAmountFieldFocused)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
 
-                    Button {
-                        viewModel.amountText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.gray.opacity(0.7))
+                    if !viewModel.amountText.isEmpty {
+                        Button {
+                            viewModel.amountText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(navy.opacity(0.42))
+                        }
                     }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(.white.opacity(0.60), lineWidth: 1)
+                }
 
                 Button {
                     openPhotoPickerIfPermitted()
                 } label: {
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.systemGray6))
+                        .fill(Color.white.opacity(0.24))
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .frame(width: 40, height: 40)
                         .overlay {
-                            Image(systemName: "camera")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(Color(red: 0.98, green: 0.20, blue: 0.30))
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(.white.opacity(0.62), lineWidth: 1)
+                        }
+                        .overlay {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(accentBlue)
                         }
                 }
                 .buttonStyle(.plain)
@@ -246,7 +272,7 @@ struct LiveRateTabView: View {
             HStack(spacing: 6) {
                 Image(systemName: "wand.and.stars")
                     .foregroundStyle(.secondary)
-                Text("支持图片识别金额")
+                Text("支持图片识别美元金额")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -266,13 +292,16 @@ struct LiveRateTabView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(9)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(10)
+        .background(glassCard(cornerRadius: 16, tint: Color.white.opacity(0.20)))
     }
 
     private func openPhotoPickerIfPermitted() {
@@ -303,45 +332,75 @@ struct LiveRateTabView: View {
         UIApplication.shared.open(settingsURL)
     }
 
-    private var pairCardsSection: some View {
-        HStack(spacing: 10) {
-            rateCard(code: "CNY")
-            rateCard(code: "HKD")
+    private func enforceUSDBaseIfNeeded() {
+        guard viewModel.baseCurrency != .USD else { return }
+        viewModel.updateBaseCurrency(.USD)
+        Task {
+            await viewModel.refresh()
         }
     }
 
-    private func rateCard(code: String) -> some View {
+    private var coreRatesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("核心汇率")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(navy)
+
+            LazyVGrid(columns: rateGridColumns, spacing: 10) {
+                ForEach(highlightRateCodes, id: \.self) { code in
+                    rateCard(code: code, emphasized: coreRateCodes.contains(code))
+                }
+            }
+        }
+    }
+
+    private func rateCard(code: String, emphasized: Bool) -> some View {
         let amount = viewModel.convertedAmount(for: code)
         let amountText = viewModel.formatAmount(amount, code: code)
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("\(icon(for: code))  \(currencyDisplayName(for: code))")
+
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: iconName(for: code))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(emphasized ? accentBlue : navy.opacity(0.75))
+                Text(currencyDisplayName(for: code))
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    .foregroundStyle(navy)
             }
 
             Text(amountText)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(signedAmountColor(amount))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .foregroundStyle(signedAmountColor(amount))
 
             Text(viewModel.rateText(for: code))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption2)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .foregroundStyle(.secondary)
         }
-        .padding(8)
+        .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(backgroundForRateCard(emphasized: emphasized))
+    }
+
+    @ViewBuilder
+    private func backgroundForRateCard(emphasized: Bool) -> some View {
+        glassCard(cornerRadius: 12, tint: emphasized ? Color(red: 0.98, green: 0.92, blue: 0.78).opacity(0.34) : Color.white.opacity(0.16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(emphasized ? accentBlue.opacity(0.45) : .white.opacity(0.38), lineWidth: emphasized ? 1.3 : 1)
+            }
     }
 
     private var allRatesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("其他汇率")
+            Text("更多汇率")
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(navy)
 
             if otherRateRows.isEmpty {
                 Text("暂无更多汇率数据")
@@ -350,10 +409,63 @@ struct LiveRateTabView: View {
             } else {
                 LazyVGrid(columns: rateGridColumns, spacing: 10) {
                     ForEach(otherRateRows, id: \.code) { row in
-                        rateCard(code: row.code)
+                        rateCard(code: row.code, emphasized: false)
                     }
                 }
             }
         }
+    }
+
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+
+            if let updatedAt = viewModel.lastUpdatedAt {
+                Text("最后更新：\(dateFormatter.string(from: updatedAt))")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var pageBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    pageBg,
+                    Color(red: 0.98, green: 0.95, blue: 0.90),
+                    Color(red: 0.99, green: 0.98, blue: 0.95)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(Color(red: 0.98, green: 0.87, blue: 0.68).opacity(0.30))
+                .frame(width: 260, height: 260)
+                .blur(radius: 36)
+                .offset(x: -120, y: -300)
+
+            Circle()
+                .fill(Color(red: 0.99, green: 0.93, blue: 0.80).opacity(0.26))
+                .frame(width: 280, height: 280)
+                .blur(radius: 42)
+                .offset(x: 130, y: -210)
+        }
+    }
+
+    private func glassCard(cornerRadius: CGFloat, tint: Color) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(tint)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(.white.opacity(0.55), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 4)
     }
 }

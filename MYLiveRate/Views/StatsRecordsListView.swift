@@ -79,6 +79,7 @@ struct StatsRecordsListView: View {
         }
         .navigationTitle("记录详情")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private var uploadRecordsSection: some View {

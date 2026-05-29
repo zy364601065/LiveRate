@@ -1,6 +1,7 @@
 import Foundation
 
 let showAllExchangeRatesStorageKey = "myliverate.rates.show_all_exchange_rates.v1"
+let trendHintToneStorageKey = "myliverate.stats.hint_tone.v1"
 
 enum Currency: String, CaseIterable, Identifiable {
     case USD
@@ -110,6 +111,22 @@ enum DefaultLandingTab: String, CaseIterable, Identifiable {
         case .holdings: return "持仓"
         case .realtime: return "实时"
         case .stats: return "统计"
+        }
+    }
+}
+
+enum TrendHintTone: String, CaseIterable, Identifiable {
+    case steady
+    case wild
+    case savage
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .steady: return "稳"
+        case .wild: return "狂野"
+        case .savage: return "更凶"
         }
     }
 }

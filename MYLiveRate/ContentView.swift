@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var selectedHoldingPhotoItem: PhotosPickerItem?
     @AppStorage("myliverate.app_theme") private var appThemeRawValue: String = AppTheme.system.rawValue
     @AppStorage("myliverate.default_landing_tab") private var defaultLandingTabRawValue: String = DefaultLandingTab.rates.rawValue
+    private let tabAccentColor = Color(red: 0.72, green: 0.46, blue: 0.22)
 
     private var preferredScheme: ColorScheme? {
         switch AppTheme(rawValue: appThemeRawValue) ?? .system {
@@ -50,6 +51,7 @@ struct ContentView: View {
                 SettingsTabView(viewModel: viewModel)
             }
         }
+        .tint(tabAccentColor)
         .preferredColorScheme(preferredScheme)
         .onAppear {
             let configured = DefaultLandingTab(rawValue: defaultLandingTabRawValue) ?? .rates

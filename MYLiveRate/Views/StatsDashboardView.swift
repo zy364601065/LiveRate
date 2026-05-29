@@ -13,7 +13,7 @@ struct StatsDashboardView: View {
     }
 
     private struct ConsecutiveTrendHint {
-        let emoji: String
+        let symbolName: String
         let message: String
         let detail: String
         let accentColor: Color
@@ -73,32 +73,95 @@ struct StatsDashboardView: View {
     @State private var selectedWeeklySlotDate: Date = Date()
     @State private var calendarGridWidth: CGFloat = 0
     @State private var hasInitializedSelection = false
+    @State private var isCurrencyPickerPresented = false
     @State private var displayedConsecutiveTrendHint: ConsecutiveTrendHint?
+    @AppStorage(trendHintToneStorageKey) private var trendHintToneRawValue: String = TrendHintTone.wild.rawValue
+    @AppStorage("myliverate.stats.hide_numbers") private var hideStatsNumbers = false
 #if DEBUG
     @AppStorage(trendHintLabScenarioStorageKey) private var trendHintLabScenarioRawValue: String = TrendHintLabScenario.none.rawValue
 #endif
     private let trendPeriodOptions: [TrendPeriod] = [.daily, .monthly]
-    private let calendarCellSpacing: CGFloat = 2
+    private let positiveColor = Color(red: 0.86, green: 0.16, blue: 0.22)
+    private let negativeColor = Color(red: 0.08, green: 0.58, blue: 0.38)
+    private let accentBlue = Color(red: 0.02, green: 0.41, blue: 0.63)
+    private let selectedDayBorderColor = Color(red: 0.77, green: 0.58, blue: 0.31)
+    private let titleColor = Color(red: 0.06, green: 0.10, blue: 0.18)
+    private let subtitleColor = Color(red: 0.22, green: 0.28, blue: 0.38)
+    private let pageBackgroundTop = Color(red: 0.99, green: 0.97, blue: 0.93)
+    private let pageBackgroundBottom = Color(red: 0.99, green: 0.98, blue: 0.95)
+    private let calendarCellSpacing: CGFloat = 4
     private let dailyVisibleDays = 7
     private let weeklyVisibleWeeks = 8
     private let monthlyVisibleMonths = 6
+    private let hiddenValueMask = "****"
     private static let profitHintQueueStorageKey = "myliverate.stats.profit_hint_queue.v1"
     private static let lossHintQueueStorageKey = "myliverate.stats.loss_hint_queue.v1"
-    private static let profitMessages = [
-        "巴菲特也不过如此！继续冲！📈",
-        "这连胜猛得离谱，市场都在给你跪！",
-        "狠！股神看了都得喊你大哥！",
-        "赚钱机器全功率启动，无敌了！",
-        "连胜这气势，直接封神！散户之王就是你！",
-        "牛到炸裂！华尔街都得给你打Call！"
+
+    private var selectedTrendHintTone: TrendHintTone {
+        TrendHintTone(rawValue: trendHintToneRawValue) ?? .wild
+    }
+
+    private func maskedNumericText(_ text: String) -> String {
+        guard hideStatsNumbers else { return text }
+        guard text != "--" else { return text }
+        let hasNumericContent = text.range(of: #"[0-9+\-/%]"#, options: .regularExpression) != nil
+        return hasNumericContent ? hiddenValueMask : text
+    }
+
+    // 稳
+    private static let steadyProfitMessages = [
+        "策略执行稳定，继续保持。",
+        "盈利节奏良好，可按计划推进。",
+        "趋势健康，注意分批与仓位管理。",
+        "当前表现优于近阶段平均水平。",
+        "连续正收益，建议继续纪律执行。",
+        "节奏不错，重点关注回撤控制。"
     ]
-    private static let lossMessages = [
-        "暂时回撤而已，猛龙过江，早晚翻盘！",
-        "亏就亏了，爷们儿从来不怕！养精蓄锐下一波干翻它！",
-        "连续亏损算什么？真正的强者都是从深坑里爬起来的！",
-        "稳住！这只是市场在给你加燃料，后面爆炸式反弹等着你！",
-        "别慌！亏损是给牛人准备的试炼，挺过去就是王者！",
-        "回撤很正常，继续执行策略，下次直接暴击！"
+    private static let steadyLossMessages = [
+        "出现连续回撤，先控制风险敞口。",
+        "建议复盘近期决策并降低冲动交易。",
+        "优先防守，等待更高胜率机会。",
+        "保持节奏，避免在波动期过度加仓。",
+        "先稳住回撤，再逐步恢复进攻。",
+        "当前以风险管理为第一优先级。"
+    ]
+    
+    // 狂野
+    private static let wildProfitMessages = [
+        "杀疯了！策略直接起飞，继续猛干！",
+        "盈利如潮水般涌来，给我往死里冲！",
+        "势头凶猛，仓位拉满，干他妈的！",
+        "今天状态爆棚，远超平均水平，给我继续屠！",
+        "连着吃肉，纪律执行到位，冲啊兄弟！",
+        "节奏狂野，注意回撤但别怂，继续进攻！"
+    ]
+
+    private static let wildLossMessages = [
+        "操，连续挨打！先把仓位给我砍下来！",
+        "别他妈冲动了，马上复盘，冷静再战！",
+        "现在进入防守模式，缩手等机会，憋住！",
+        "回撤凶狠，禁止加仓，先保命再说！",
+        "稳住别崩，止损止损，养精蓄锐再杀回来！",
+        "风险第一！把贪婪给我吞下去，活下来才能继续狂飙！"
+    ]
+    
+    // 更凶
+    private static let savageProfitMessages = [
+        "他妈的杀爆了！策略直接起飞，继续给我猛干！",
+        "盈利像疯狗一样狂咬，仓位拉满往死里冲！",
+        "势头凶残，屠杀模式已开启，干翻它！",
+        "今天状态炸裂，远超平均，给我继续血洗市场！",
+        "连着吃大肉，纪律执行得漂亮，冲啊王八蛋！",
+        "节奏狂到炸裂，注意回撤但别怂，继续进攻！"
+    ]
+
+    private static let savageLossMessages = [
+        "操他妈的！连续挨揍，先把仓位给我砍到骨头！",
+        "别他妈脑子发热，马上复盘，冷静点再战！",
+        "现在给我缩卵防守，憋住！等高胜率机会再杀！",
+        "回撤这么狠？禁止加仓！先保命，别死在里面！",
+        "稳住别崩盘，止损止损！养好精气神再回来复仇！",
+        "风险他妈的是第一位！把贪婪吞下去，活下来才能继续狂飙！"
     ]
 
     private var marketCalendar: Calendar {
@@ -128,8 +191,11 @@ struct StatsDashboardView: View {
     }
 
     private func signedAmountColor(_ value: Double, zeroColor: Color = .secondary) -> Color {
-        if value > 0 { return .red }
-        if value < 0 { return .green }
+        if hideStatsNumbers {
+            return Color(red: 0.35, green: 0.40, blue: 0.47)
+        }
+        if value > 0 { return positiveColor }
+        if value < 0 { return negativeColor }
         return zeroColor
     }
 
@@ -195,7 +261,7 @@ struct StatsDashboardView: View {
     }
 
     private var selectedDailySlotAmountText: String {
-        String(format: "%+.2f", selectedDailySlotAmount)
+        hideStatsNumbers ? hiddenValueMask : String(format: "%+.2f", selectedDailySlotAmount)
     }
 
     private var selectedDailySlotAmountColor: Color {
@@ -339,7 +405,7 @@ struct StatsDashboardView: View {
     }
 
     private var selectedMonthlySlotAmountText: String {
-        String(format: "%+.2f", selectedMonthlySlotAmount)
+        hideStatsNumbers ? hiddenValueMask : String(format: "%+.2f", selectedMonthlySlotAmount)
     }
 
     private var selectedMonthlySlotAmountColor: Color {
@@ -478,7 +544,7 @@ struct StatsDashboardView: View {
     }
 
     private var selectedWeeklySlotAmountText: String {
-        String(format: "%+.2f", selectedWeeklySlotAmount)
+        hideStatsNumbers ? hiddenValueMask : String(format: "%+.2f", selectedWeeklySlotAmount)
     }
 
     private var selectedWeeklySlotAmountColor: Color {
@@ -573,6 +639,14 @@ struct StatsDashboardView: View {
         })
     }
 
+    private var calendarHeatmapMaxAbsAmount: Double {
+        let calendar = marketCalendar
+        return monthAmountMap
+            .filter { calendar.isDate($0.key, equalTo: displayedMonth, toGranularity: .month) }
+            .map { abs($0.value) }
+            .max() ?? 0
+    }
+
     private var currentMonthTotalAmount: Double {
         let calendar = marketCalendar
         return monthAmountMap.reduce(0) { total, pair in
@@ -601,30 +675,6 @@ struct StatsDashboardView: View {
         return viewModel.dailyTotalAmount(for: viewModel.statsDisplayCurrency) ?? 0
     }
 
-    private var currentMonthCumulativePeak: (day: Date, total: Double)? {
-        let calendar = marketCalendar
-        let monthRows = rows
-            .filter { calendar.isDate($0.day, equalTo: displayedMonth, toGranularity: .month) }
-            .map { (day: calendar.startOfDay(for: $0.day), amount: $0.convertedAmount) }
-            .sorted { $0.day < $1.day }
-
-        guard !monthRows.isEmpty else {
-            return nil
-        }
-
-        var runningTotal = 0.0
-        var peak = (day: monthRows[0].day, total: -Double.greatestFiniteMagnitude)
-
-        for row in monthRows {
-            runningTotal += row.amount
-            if runningTotal > peak.total {
-                peak = (day: row.day, total: runningTotal)
-            }
-        }
-
-        return peak
-    }
-
     private func dayText(_ day: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_Hans_CN")
@@ -633,34 +683,122 @@ struct StatsDashboardView: View {
         return formatter.string(from: day)
     }
 
-    private var summaryHeaderText: String {
-        switch summaryPeriod {
-        case .currentWeek:
-            return "本周区间：\(currentWeekRangeText)"
-        case .currentMonth:
-            if let peak = currentMonthCumulativePeak {
-                let amountText = viewModel.formatAmount(peak.total, currency: viewModel.statsDisplayCurrency)
-                return "本月累计顶峰日：\(dayText(peak.day))  \(amountText)"
+    private var maxProfitDayStat: (day: Date, amount: Double)? {
+        guard let row = rows.max(by: { $0.convertedAmount < $1.convertedAmount }),
+              row.convertedAmount > 0 else {
+            return nil
+        }
+        return (day: marketCalendar.startOfDay(for: row.day), amount: row.convertedAmount)
+    }
+
+    private var maxLossDayStat: (day: Date, amount: Double)? {
+        guard let row = rows.min(by: { $0.convertedAmount < $1.convertedAmount }),
+              row.convertedAmount < 0 else {
+            return nil
+        }
+        return (day: marketCalendar.startOfDay(for: row.day), amount: row.convertedAmount)
+    }
+
+    private var currentMonthRows: [DailyAmountRow] {
+        let calendar = marketCalendar
+        return rows.filter { calendar.isDate($0.day, equalTo: displayedMonth, toGranularity: .month) }
+    }
+
+    private var monthWinRateStat: (wins: Int, total: Int, rate: Double)? {
+        let monthRows = currentMonthRows
+        guard !monthRows.isEmpty else { return nil }
+        let wins = monthRows.filter { $0.convertedAmount > 0 }.count
+        let total = monthRows.count
+        let rate = total > 0 ? Double(wins) / Double(total) : 0
+        return (wins, total, rate)
+    }
+
+    private var monthOverMonthStat: (delta: Double, percent: Double?)? {
+        let calendar = marketCalendar
+        let thisMonthTotal = currentMonthTotalAmount
+        guard let previousMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) else {
+            return nil
+        }
+
+        let previousMonthTotal = monthAmountMap.reduce(0.0) { total, pair in
+            if calendar.isDate(pair.key, equalTo: previousMonth, toGranularity: .month) {
+                return total + pair.value
             }
-            return "本月累计顶峰日：--"
-        case .allTime:
-            return "总计"
+            return total
+        }
+
+        let delta = thisMonthTotal - previousMonthTotal
+        let percent: Double? = previousMonthTotal == 0 ? nil : (delta / abs(previousMonthTotal)) * 100
+        return (delta, percent)
+    }
+
+    private var keyStatsItems: [(title: String, day: String, amount: String, tone: Color)] {
+        let profit: (String, String) = {
+            guard let stat = maxProfitDayStat else { return ("--", "--") }
+            return (dayText(stat.day), compactAmountText(stat.amount))
+        }()
+
+        let loss: (String, String) = {
+            guard let stat = maxLossDayStat else { return ("--", "--") }
+            return (dayText(stat.day), compactAmountText(stat.amount))
+        }()
+
+        let winRate: (String, String, Color) = {
+            guard let stat = monthWinRateStat else { return ("本月", "--", .secondary) }
+            let ratio = "\(stat.wins)/\(stat.total)"
+            let percentText = String(format: "%.1f%%", stat.rate * 100)
+            let tone: Color = stat.rate >= 0.5 ? positiveColor : negativeColor
+            return ("本月", "\(ratio)（\(percentText)）", tone)
+        }()
+
+        let monthVsMonth: (String, String, Color) = {
+            guard let stat = monthOverMonthStat else { return ("环比", "--", .secondary) }
+            let deltaText = compactAmountText(stat.delta)
+            let percentText = stat.percent.map { String(format: "%+.1f%%", $0) } ?? "--"
+            let tone = signedAmountColor(stat.delta, zeroColor: .secondary)
+            return ("本月vs上月", "\(deltaText) / \(percentText)", tone)
+        }()
+
+        let rawItems = [
+            ("最大盈利日", profit.0, profit.1, positiveColor),
+            ("最大亏损日", loss.0, loss.1, negativeColor),
+            ("胜率", winRate.0, winRate.1, winRate.2),
+            ("环比变化", monthVsMonth.0, monthVsMonth.1, monthVsMonth.2)
+        ]
+
+        guard hideStatsNumbers else { return rawItems }
+        return rawItems.map { item in
+            (item.0, maskedNumericText(item.1), maskedNumericText(item.2), subtitleColor)
         }
     }
 
-    private var summaryHeaderColor: Color {
+    private func compactAmountText(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        let absText = formatter.string(from: NSNumber(value: abs(value))) ?? String(format: "%.2f", abs(value))
+        return value >= 0 ? "+\(absText)" : "-\(absText)"
+    }
+
+    private var summaryTitleText: String {
         switch summaryPeriod {
         case .currentWeek:
-            return .blue
+            return "本周收益"
         case .currentMonth:
-            return .red
+            return "本月收益"
         case .allTime:
-            return .secondary
+            return "累计收益"
         }
     }
 
     private var summaryMainAmount: Double {
         summaryDisplayAmount
+    }
+
+    private var summaryMainAmountText: String {
+        guard !hideStatsNumbers else { return hiddenValueMask }
+        return viewModel.formatAmount(summaryMainAmount, currency: viewModel.statsDisplayCurrency)
     }
 
     private var currentWeekRange: (start: Date, end: Date) {
@@ -672,15 +810,6 @@ struct StatsDashboardView: View {
         let components = mondayCalendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
         let start = mondayCalendar.date(from: components) ?? today
         return (start: start, end: today)
-    }
-
-    private var currentWeekRangeText: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_Hans_CN")
-        formatter.timeZone = marketCalendar.timeZone
-        formatter.dateFormat = "M月d日"
-        let range = currentWeekRange
-        return "\(formatter.string(from: range.start))-\(formatter.string(from: range.end))"
     }
 
     private func currentConsecutiveTrendStatus() -> ConsecutiveTrendStatus? {
@@ -738,36 +867,35 @@ struct StatsDashboardView: View {
         switch status.type {
         case .profit:
             displayedConsecutiveTrendHint = ConsecutiveTrendHint(
-                emoji: "📈",
+                symbolName: "chart.line.uptrend.xyaxis.circle.fill",
                 message: nextConsecutiveTrendMessage(for: .profit),
                 detail: "已连续盈利 \(status.streakCount) 天",
-                accentColor: .red,
-                backgroundColor: Color.red.opacity(0.12)
+                accentColor: positiveColor,
+                backgroundColor: positiveColor.opacity(0.10)
             )
         case .loss:
             displayedConsecutiveTrendHint = ConsecutiveTrendHint(
-                emoji: "🛟",
+                symbolName: "shield.lefthalf.filled.badge.checkmark",
                 message: nextConsecutiveTrendMessage(for: .loss),
                 detail: "已连续亏损 \(status.streakCount) 天",
-                accentColor: .green,
-                backgroundColor: Color.green.opacity(0.12)
+                accentColor: negativeColor,
+                backgroundColor: negativeColor.opacity(0.10)
             )
         }
     }
 
     private func nextConsecutiveTrendMessage(for type: ConsecutiveTrendType) -> String {
         let defaults = UserDefaults.standard
-        let storageKey: String
-        let allMessages: [String]
+        let baseStorageKey: String
+        let allMessages = messages(for: type, tone: selectedTrendHintTone)
 
         switch type {
         case .profit:
-            storageKey = Self.profitHintQueueStorageKey
-            allMessages = Self.profitMessages
+            baseStorageKey = Self.profitHintQueueStorageKey
         case .loss:
-            storageKey = Self.lossHintQueueStorageKey
-            allMessages = Self.lossMessages
+            baseStorageKey = Self.lossHintQueueStorageKey
         }
+        let storageKey = "\(baseStorageKey).\(selectedTrendHintTone.rawValue)"
 
         var queue = (defaults.stringArray(forKey: storageKey) ?? [])
             .filter { allMessages.contains($0) }
@@ -779,6 +907,23 @@ struct StatsDashboardView: View {
         let selected = queue.removeFirst()
         defaults.set(queue, forKey: storageKey)
         return selected
+    }
+
+    private func messages(for type: ConsecutiveTrendType, tone: TrendHintTone) -> [String] {
+        switch (tone, type) {
+        case (.steady, .profit):
+            return Self.steadyProfitMessages
+        case (.steady, .loss):
+            return Self.steadyLossMessages
+        case (.wild, .profit):
+            return Self.wildProfitMessages
+        case (.wild, .loss):
+            return Self.wildLossMessages
+        case (.savage, .profit):
+            return Self.savageProfitMessages
+        case (.savage, .loss):
+            return Self.savageLossMessages
+        }
     }
 
     private func consecutiveTrendHintInput(calendar: Calendar) -> (latestDataDay: Date, amountByDay: [Date: Double]) {
@@ -853,9 +998,9 @@ struct StatsDashboardView: View {
         let normalizedDay = normalizedCalendarDay(day)
         if let amount = monthAmountMap[normalizedDay] {
             if amount == 0 {
-                return "0.00"
+                return nil
             }
-            return String(format: "%+.2f", amount)
+            return hideStatsNumbers ? hiddenValueMask : String(format: "%+.2f", amount)
         }
 
         if marketCalendar.isDate(normalizedDay, inSameDayAs: todayInMarketCalendar) {
@@ -863,7 +1008,7 @@ struct StatsDashboardView: View {
         }
 
         if normalizedDay < todayInMarketCalendar {
-            return "0.00"
+            return nil
         }
 
         return nil
@@ -891,23 +1036,25 @@ struct StatsDashboardView: View {
         }
 
         let amount = amountValue(for: day) ?? 0
-        let strongOpacity = 0.50
-        let weakOpacity = 0.16
-        let opacity = isSelected ? strongOpacity : weakOpacity
+        let heat = calendarHeatmapMaxAbsAmount > 0 ? min(abs(amount) / calendarHeatmapMaxAbsAmount, 1) : 0
+        let opacity = 0.14 + (heat * 0.16)
+
+        if hideStatsNumbers {
+            return Color(red: 0.84, green: 0.83, blue: 0.80).opacity(isSelected ? opacity + 0.07 : opacity)
+        }
 
         if amount > 0 {
-            return Color.red.opacity(opacity)
+            return positiveColor.opacity(isSelected ? opacity + 0.07 : opacity)
         }
         if amount < 0 {
-            return Color.green.opacity(opacity)
+            return negativeColor.opacity(isSelected ? opacity + 0.07 : opacity)
         }
-        return Color.gray.opacity(isSelected ? 0.30 : 0.12)
+        return Color(red: 0.98, green: 0.92, blue: 0.82).opacity(isSelected ? 0.34 : 0.22)
     }
 
     private func dayPrimaryTextColor(for day: Date, isSelected: Bool) -> Color {
-        let amount = amountValue(for: day) ?? 0
-        if isSelected, amount != 0 {
-            return .white
+        if isSelected {
+            return .primary
         }
         return .primary
     }
@@ -917,14 +1064,15 @@ struct StatsDashboardView: View {
             return .secondary
         }
 
-        if isSelected, amount != 0 {
-            return .white
+        if hideStatsNumbers {
+            return subtitleColor.opacity(isSelected ? 0.95 : 0.82)
         }
+
         if amount > 0 {
-            return .red
+            return positiveColor
         }
         if amount < 0 {
-            return .green
+            return negativeColor
         }
         return .secondary
     }
@@ -963,16 +1111,51 @@ struct StatsDashboardView: View {
     }
 
     private var titleHeader: some View {
-        HStack(alignment: .bottom) {
-            Text("收益日历")
-                .font(.title2.bold())
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("统计面板")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(titleColor)
+                    statsNumberPrivacyToggle
+                }
+                Text("按美东交易日查看收益日历与趋势")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(subtitleColor)
+            }
+
             Spacer()
+
             NavigationLink(destination: StatsRecordsListView(viewModel: viewModel, selectedDay: selectedDay)) {
-                Text("查看记录详情 >")
-                    .font(.subheadline)
-                    .foregroundColor(.accentColor)
+                HStack(spacing: 3) {
+                    Text("查看记录")
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(accentBlue)
             }
         }
+    }
+
+    private var statsNumberPrivacyToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                hideStatsNumbers.toggle()
+            }
+        } label: {
+            Image(systemName: hideStatsNumbers ? "eye.slash.fill" : "eye.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(accentBlue)
+                .frame(width: 28, height: 28)
+            .background(.thinMaterial, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(.white.opacity(0.6), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hideStatsNumbers ? "显示统计数字" : "隐藏统计数字")
     }
 
     private var mainScrollView: some View {
@@ -981,10 +1164,14 @@ struct StatsDashboardView: View {
                 titleHeader
                 calendarSection
                 summarySection
+                keyStatsSection
                 trendSection
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 112)
         }
+        .background(pageBackground.ignoresSafeArea())
         .navigationTitle("统计")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: handleOnAppear)
@@ -1005,6 +1192,12 @@ struct StatsDashboardView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 currencyMenu
             }
+        }
+        .sheet(isPresented: $isCurrencyPickerPresented) {
+            currencyPickerSheet
+                .presentationDetents([.height(310)])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(.clear)
         }
     }
 
@@ -1046,21 +1239,101 @@ struct StatsDashboardView: View {
     }
 
     private var currencyMenu: some View {
-        Menu {
-            ForEach(Currency.displayOrder) { currency in
-                Button {
-                    viewModel.statsDisplayCurrency = currency
-                } label: {
-                    if currency == viewModel.statsDisplayCurrency {
-                        Label(currency.displayName, systemImage: "checkmark")
-                    } else {
-                        Text(currency.displayName)
+        Button {
+            isCurrencyPickerPresented = true
+        } label: {
+            HStack(spacing: 4) {
+                Text(currencyDisplayLabel(viewModel.statsDisplayCurrency))
+                    .font(.caption.weight(.bold))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.bold))
+            }
+            .foregroundStyle(accentBlue)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(.thinMaterial, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(.white.opacity(0.6), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var currencyPickerSheet: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 12) {
+                Text("选择统计币种")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(titleColor)
+
+                Text("当前：\(currencyDisplayLabel(viewModel.statsDisplayCurrency))")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                VStack(spacing: 8) {
+                    ForEach(Currency.displayOrder) { currency in
+                        Button {
+                            viewModel.statsDisplayCurrency = currency
+                            isCurrencyPickerPresented = false
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: currency == viewModel.statsDisplayCurrency ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(currency == viewModel.statsDisplayCurrency ? settingsAccent : .secondary.opacity(0.65))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(currencyDisplayLabel(currency))
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(titleColor)
+                                }
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(.white.opacity(0.6), lineWidth: 1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("切换到\(currency.displayName)")
                     }
                 }
+
+                Button("取消") {
+                    isCurrencyPickerPresented = false
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
             }
-        } label: {
-            Label(viewModel.statsDisplayCurrency.rawValue, systemImage: "arrow.triangle.2.circlepath")
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white.opacity(0.22))
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(.white.opacity(0.64), lineWidth: 1)
+                    }
+            )
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            Spacer(minLength: 0)
         }
+    }
+
+    private var settingsAccent: Color {
+        Color(red: 0.72, green: 0.46, blue: 0.22)
+    }
+
+    private func currencyDisplayLabel(_ currency: Currency) -> String {
+        "\(currency.chineseName)（\(currency.rawValue)）"
     }
 
     private var calendarHeader: some View {
@@ -1070,13 +1343,17 @@ struct StatsDashboardView: View {
                 displayedMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
             } label: {
                 Image(systemName: "chevron.left")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 36, height: 36)
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(accentBlue)
 
             Spacer()
 
             Text(monthTitleFormatter.string(from: displayedMonth))
-                .font(.headline)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(titleColor)
 
             Spacer()
 
@@ -1085,49 +1362,73 @@ struct StatsDashboardView: View {
                 displayedMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
             } label: {
                 Image(systemName: "chevron.right")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 36, height: 36)
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(accentBlue)
         }
     }
-    private var calendarGrid: some View {
-        let cellSize = max((calendarGridWidth - (calendarCellSpacing * 6)) / 7, 28)
-        let columns = Array(repeating: GridItem(.fixed(cellSize), spacing: calendarCellSpacing), count: 7)
 
-        return VStack(alignment: .leading, spacing: 8) {
+    private func dayCellBorderColor(for day: Date, isSelected: Bool) -> Color {
+        guard isSelected else { return .clear }
+        return selectedDayBorderColor
+    }
+
+    private var calendarGrid: some View {
+        let cellWidth = max((calendarGridWidth - (calendarCellSpacing * 6)) / 7, 30)
+        let cellHeight = max(cellWidth, 56)
+        let columns = Array(repeating: GridItem(.fixed(cellWidth), spacing: calendarCellSpacing), count: 7)
+
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: calendarCellSpacing) {
                 ForEach(weekdaySymbols, id: \.self) { symbol in
                     Text(symbol)
-                        .font(.caption)
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: cellSize)
+                        .frame(width: cellWidth)
                 }
             }
 
             LazyVGrid(columns: columns, spacing: calendarCellSpacing) {
-                ForEach(Array(calendarGridDays.enumerated()), id: \.offset) { index, date in
+                ForEach(Array(calendarGridDays.enumerated()), id: \.offset) { _, date in
                     if let date {
                         let isSelected = marketCalendar.isDate(selectedDay, inSameDayAs: date)
-                        VStack(spacing: 4) {
-                            Text("\(marketCalendar.component(.day, from: date))")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(dayPrimaryTextColor(for: date, isSelected: isSelected))
-                            if let amountText = amountText(for: date) {
-                                Text(amountText)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(amountDisplayColor(for: date, isSelected: isSelected))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.72)
-                            }
-                        }
-                        .frame(width: cellSize, height: cellSize)
-                        .background(dayCellBackground(for: date, isSelected: isSelected), in: RoundedRectangle(cornerRadius: 10))
-                        .contentShape(Rectangle())
-                        .onTapGesture {
+                        Button {
                             selectedDay = date
+                        } label: {
+                            VStack(spacing: 2) {
+                                Text("\(marketCalendar.component(.day, from: date))")
+                                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(dayPrimaryTextColor(for: date, isSelected: isSelected))
+                                if let amountText = amountText(for: date) {
+                                    Text(amountText)
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .monospacedDigit()
+                                        .foregroundStyle(amountDisplayColor(for: date, isSelected: isSelected))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.5)
+                                        .padding(.horizontal, 2)
+                                } else if marketCalendar.isDate(normalizedCalendarDay(date), inSameDayAs: todayInMarketCalendar),
+                                          amountValue(for: date) == nil {
+                                    Text("未更新")
+                                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 2)
+                                }
+                            }
+                            .frame(width: cellWidth, height: cellHeight)
+                            .background(dayCellBackground(for: date, isSelected: isSelected), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(dayCellBorderColor(for: date, isSelected: isSelected), lineWidth: isSelected ? 1.5 : 0)
+                            }
+                            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
+                        .buttonStyle(.plain)
                     } else {
                         Color.clear
-                            .frame(width: cellSize, height: cellSize)
+                            .frame(width: cellWidth, height: cellHeight)
                     }
                 }
             }
@@ -1147,19 +1448,20 @@ struct StatsDashboardView: View {
     }
 
     private var calendarSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
             calendarHeader
             calendarGrid
         }
-        .padding()
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .padding(16)
+        .background(glassCardBackground(cornerRadius: 28))
     }
 
     private var trendHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(alignment: .center) {
                 Text("趋势走向")
-                    .font(.headline)
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
+                    .foregroundStyle(titleColor)
                 Spacer()
                 Picker("趋势周期", selection: $trendPeriod) {
                     ForEach(trendPeriodOptions) { period in
@@ -1167,7 +1469,7 @@ struct StatsDashboardView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 220)
+                .frame(width: 178)
             }
 
             Picker("图形样式", selection: $trendChartStyle) {
@@ -1186,7 +1488,7 @@ struct StatsDashboardView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
             Text(selectedDailySlotAmountText)
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(selectedDailySlotAmountColor)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.bottom, 8)
@@ -1229,7 +1531,7 @@ struct StatsDashboardView: View {
 
                 RuleMark(y: .value("中轴", 0))
                     .lineStyle(StrokeStyle(lineWidth: 1))
-                    .foregroundStyle(.gray.opacity(0.45))
+                    .foregroundStyle(accentBlue.opacity(0.28))
 
                 RuleMark(x: .value("中心线", centeredPlotDateFromScroll))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -1264,7 +1566,7 @@ struct StatsDashboardView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
             Text(selectedMonthlySlotAmountText)
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(selectedMonthlySlotAmountColor)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.bottom, 8)
@@ -1307,7 +1609,7 @@ struct StatsDashboardView: View {
 
                 RuleMark(y: .value("中轴", 0))
                     .lineStyle(StrokeStyle(lineWidth: 1))
-                    .foregroundStyle(.gray.opacity(0.45))
+                    .foregroundStyle(accentBlue.opacity(0.28))
 
                 RuleMark(x: .value("中心线", monthlyCenteredPlotDateFromScroll))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -1345,7 +1647,7 @@ struct StatsDashboardView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
             Text(selectedWeeklySlotAmountText)
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(selectedWeeklySlotAmountColor)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.bottom, 8)
@@ -1388,7 +1690,7 @@ struct StatsDashboardView: View {
 
                 RuleMark(y: .value("中轴", 0))
                     .lineStyle(StrokeStyle(lineWidth: 1))
-                    .foregroundStyle(.gray.opacity(0.45))
+                    .foregroundStyle(accentBlue.opacity(0.28))
 
                 RuleMark(x: .value("中心线", weeklyCenteredPlotDateFromScroll))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -1417,7 +1719,7 @@ struct StatsDashboardView: View {
     }
 
     private var trendSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             trendHeader
 
             if trendPeriod == .daily {
@@ -1438,15 +1740,16 @@ struct StatsDashboardView: View {
                 }
             }
         }
-        .padding()
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .padding(16)
+        .background(glassCardBackground(cornerRadius: 28))
     }
 
     private var summarySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("汇总金额")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center) {
+                Text(summaryTitleText)
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
+                    .foregroundStyle(titleColor)
                 Spacer()
                 Picker("汇总范围", selection: $summaryPeriod) {
                     ForEach(SummaryPeriod.allCases) { period in
@@ -1454,37 +1757,122 @@ struct StatsDashboardView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 200)
+                .frame(width: 202)
             }
 
-            Text(summaryHeaderText)
-                .font(.footnote)
-                .foregroundStyle(summaryHeaderColor)
-
-            Text(viewModel.formatAmount(
-                summaryMainAmount,
-                currency: viewModel.statsDisplayCurrency
-            ))
-            .font(.system(size: 30, weight: .bold))
+            Text(summaryMainAmountText)
+            .font(.system(size: 36, weight: .bold, design: .rounded))
             .foregroundStyle(signedAmountColor(summaryMainAmount, zeroColor: .primary))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.64)
 
             if let hint = displayedConsecutiveTrendHint {
+                let hintToneColor = hideStatsNumbers ? subtitleColor : hint.accentColor
+                let hintBackgroundColor = hideStatsNumbers ? Color.gray.opacity(0.10) : hint.backgroundColor
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(hint.emoji) \(hint.message)")
-                        .font(.footnote)
-                        .foregroundStyle(hint.accentColor)
-                    Text(hint.detail)
+                    HStack(spacing: 6) {
+                        Image(systemName: hint.symbolName)
+                        Text(hint.message)
+                            .lineLimit(2)
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(hintToneColor)
+                    Text(hideStatsNumbers ? "已连续****天" : hint.detail)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(hint.accentColor)
+                        .foregroundStyle(hintToneColor)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(hint.backgroundColor, in: RoundedRectangle(cornerRadius: 10))
+                .background(hintBackgroundColor, in: RoundedRectangle(cornerRadius: 10))
                 .padding(.top, 2)
             }
         }
-        .padding()
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .background(glassCardBackground(cornerRadius: 28))
+    }
+
+    private var keyStatsSection: some View {
+        let columns = [
+            GridItem(.flexible(), spacing: 10),
+            GridItem(.flexible(), spacing: 10)
+        ]
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("关键统计")
+                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .foregroundStyle(titleColor)
+
+            LazyVGrid(columns: columns, spacing: 10) {
+                ForEach(Array(keyStatsItems.enumerated()), id: \.offset) { _, item in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(item.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 8) {
+                            Text(item.day)
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(titleColor.opacity(0.88))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+
+                            Spacer(minLength: 4)
+
+                            Text(item.amount)
+                                .font(.footnote.weight(.bold))
+                                .monospacedDigit()
+                                .foregroundStyle(item.tone)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(.white.opacity(0.56), lineWidth: 1)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(glassCardBackground(cornerRadius: 28))
+    }
+
+    private func glassCardBackground(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.white.opacity(0.20))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(.white.opacity(0.62), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 5)
+    }
+
+    private var pageBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [pageBackgroundTop, pageBackgroundBottom],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(Color(red: 0.98, green: 0.86, blue: 0.66).opacity(0.28))
+                .frame(width: 280, height: 280)
+                .blur(radius: 40)
+                .offset(x: -110, y: -360)
+
+            Circle()
+                .fill(Color(red: 0.99, green: 0.92, blue: 0.78).opacity(0.22))
+                .frame(width: 300, height: 300)
+                .blur(radius: 46)
+                .offset(x: 130, y: -240)
+        }
     }
 }

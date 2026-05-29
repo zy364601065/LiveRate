@@ -7,6 +7,8 @@ struct HoldingsTabView: View {
     @State private var editingHoldingID: UUID?
     @State private var draftName = ""
     @State private var draftCode = ""
+    private let pageBackgroundTop = Color(red: 0.995, green: 0.995, blue: 0.992)
+    private let pageBackgroundBottom = Color(red: 0.989, green: 0.989, blue: 0.982)
 
     private var timeFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -64,9 +66,19 @@ struct HoldingsTabView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(pageBackground.ignoresSafeArea())
             .navigationTitle("持仓明细")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private var pageBackground: some View {
+        LinearGradient(
+            colors: [pageBackgroundTop, pageBackgroundBottom],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     @ViewBuilder

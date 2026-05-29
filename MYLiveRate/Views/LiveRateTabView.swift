@@ -12,11 +12,11 @@ struct LiveRateTabView: View {
     @State private var isShowingPhotoPermissionAlert = false
     @FocusState private var isAmountFieldFocused: Bool
 
-    private let profitColor = Color(red: 0.86, green: 0.16, blue: 0.22)
-    private let lossColor = Color(red: 0.08, green: 0.58, blue: 0.38)
+    private let profitColor = Color(red: 0.93, green: 0.19, blue: 0.23)
+    private let lossColor = Color(red: 0.12, green: 0.72, blue: 0.67)
     private let navy = Color(red: 0.06, green: 0.10, blue: 0.18)
-    private let accentBlue = Color(red: 0.72, green: 0.46, blue: 0.22)
-    private let pageBg = Color(red: 0.98, green: 0.97, blue: 0.94)
+    private let accentBlue = Color(red: 0.95, green: 0.52, blue: 0.16)
+    private let pageBg = Color(red: 0.995, green: 0.995, blue: 0.992)
     private let coreRateCodes = ["CNY", "HKD"]
     private let rateGridColumns = [
         GridItem(.flexible(), spacing: 10),
@@ -437,24 +437,24 @@ struct LiveRateTabView: View {
             LinearGradient(
                 colors: [
                     pageBg,
-                    Color(red: 0.98, green: 0.95, blue: 0.90),
-                    Color(red: 0.99, green: 0.98, blue: 0.95)
+                    Color(red: 0.993, green: 0.993, blue: 0.988),
+                    Color(red: 0.989, green: 0.989, blue: 0.982)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
 
             Circle()
-                .fill(Color(red: 0.98, green: 0.87, blue: 0.68).opacity(0.30))
+                .fill(Color.white.opacity(0.18))
                 .frame(width: 260, height: 260)
-                .blur(radius: 36)
-                .offset(x: -120, y: -300)
+                .blur(radius: 44)
+                .offset(x: -130, y: -300)
 
             Circle()
-                .fill(Color(red: 0.99, green: 0.93, blue: 0.80).opacity(0.26))
+                .fill(Color(red: 0.94, green: 0.94, blue: 0.94).opacity(0.14))
                 .frame(width: 280, height: 280)
-                .blur(radius: 42)
-                .offset(x: 130, y: -210)
+                .blur(radius: 48)
+                .offset(x: 130, y: -220)
         }
     }
 

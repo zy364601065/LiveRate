@@ -4,6 +4,8 @@ struct LiveStockTabView: View {
     @ObservedObject var viewModel: ExchangeRateViewModel
     @FocusState private var isStockFieldFocused: Bool
     @State private var manualInputSymbol = ""
+    private let pageBackgroundTop = Color(red: 0.995, green: 0.995, blue: 0.992)
+    private let pageBackgroundBottom = Color(red: 0.989, green: 0.989, blue: 0.982)
 
     private var stockTimeFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -13,8 +15,8 @@ struct LiveStockTabView: View {
     }
 
     private func signedChangeColor(_ value: Double) -> Color {
-        if value > 0 { return .red }
-        if value < 0 { return .green }
+        if value > 0 { return Color(red: 0.93, green: 0.19, blue: 0.23) }
+        if value < 0 { return Color(red: 0.12, green: 0.72, blue: 0.67) }
         return .secondary
     }
 
@@ -111,6 +113,8 @@ struct LiveStockTabView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(pageBackground.ignoresSafeArea())
             .safeAreaInset(edge: .top) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
@@ -161,6 +165,14 @@ struct LiveStockTabView: View {
             .navigationTitle("实时")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private var pageBackground: some View {
+        LinearGradient(
+            colors: [pageBackgroundTop, pageBackgroundBottom],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     private func submitManualSymbol() {

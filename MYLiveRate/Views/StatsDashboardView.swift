@@ -81,14 +81,14 @@ struct StatsDashboardView: View {
     @AppStorage(trendHintLabScenarioStorageKey) private var trendHintLabScenarioRawValue: String = TrendHintLabScenario.none.rawValue
 #endif
     private let trendPeriodOptions: [TrendPeriod] = [.daily, .monthly]
-    private let positiveColor = Color(red: 0.86, green: 0.16, blue: 0.22)
-    private let negativeColor = Color(red: 0.08, green: 0.58, blue: 0.38)
-    private let accentBlue = Color(red: 0.02, green: 0.41, blue: 0.63)
+    private let positiveColor = Color(red: 0.93, green: 0.19, blue: 0.23)
+    private let negativeColor = Color(red: 0.12, green: 0.72, blue: 0.67)
+    private let accentBlue = Color(red: 0.95, green: 0.52, blue: 0.16)
     private let selectedDayBorderColor = Color(red: 0.77, green: 0.58, blue: 0.31)
     private let titleColor = Color(red: 0.06, green: 0.10, blue: 0.18)
     private let subtitleColor = Color(red: 0.22, green: 0.28, blue: 0.38)
-    private let pageBackgroundTop = Color(red: 0.99, green: 0.97, blue: 0.93)
-    private let pageBackgroundBottom = Color(red: 0.99, green: 0.98, blue: 0.95)
+    private let pageBackgroundTop = Color(red: 0.995, green: 0.995, blue: 0.992)
+    private let pageBackgroundBottom = Color(red: 0.989, green: 0.989, blue: 0.982)
     private let calendarCellSpacing: CGFloat = 4
     private let dailyVisibleDays = 7
     private let weeklyVisibleWeeks = 8
@@ -112,6 +112,7 @@ struct StatsDashboardView: View {
     private static let steadyProfitMessages = [
         "策略执行稳定，继续保持。",
         "盈利节奏良好，可按计划推进。",
+        
         "趋势健康，注意分批与仓位管理。",
         "当前表现优于近阶段平均水平。",
         "连续正收益，建议继续纪律执行。",
@@ -1329,7 +1330,7 @@ struct StatsDashboardView: View {
     }
 
     private var settingsAccent: Color {
-        Color(red: 0.72, green: 0.46, blue: 0.22)
+        Color(red: 0.95, green: 0.52, blue: 0.16)
     }
 
     private func currencyDisplayLabel(_ currency: Currency) -> String {
@@ -1863,15 +1864,15 @@ struct StatsDashboardView: View {
             )
 
             Circle()
-                .fill(Color(red: 0.98, green: 0.86, blue: 0.66).opacity(0.28))
+                .fill(Color.white.opacity(0.18))
                 .frame(width: 280, height: 280)
-                .blur(radius: 40)
+                .blur(radius: 46)
                 .offset(x: -110, y: -360)
 
             Circle()
-                .fill(Color(red: 0.99, green: 0.92, blue: 0.78).opacity(0.22))
+                .fill(Color(red: 0.94, green: 0.94, blue: 0.94).opacity(0.14))
                 .frame(width: 300, height: 300)
-                .blur(radius: 46)
+                .blur(radius: 52)
                 .offset(x: 130, y: -240)
         }
     }

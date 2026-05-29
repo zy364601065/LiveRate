@@ -50,8 +50,8 @@ struct StatsRecordsListView: View {
     }
 
     private func signedAmountColor(_ value: Double) -> Color {
-        if value > 0 { return .red }
-        if value < 0 { return .green }
+        if value > 0 { return Color(red: 0.93, green: 0.19, blue: 0.23) }
+        if value < 0 { return Color(red: 0.12, green: 0.72, blue: 0.67) }
         return .secondary
     }
 

@@ -4,30 +4,30 @@ private let appThemeStorageKey = "myliverate.app_theme"
 private let defaultLandingTabStorageKey = "myliverate.default_landing_tab"
 
 private let settingsTitleColor = Color(red: 0.10, green: 0.16, blue: 0.24)
-private let settingsAccentColor = Color(red: 0.72, green: 0.46, blue: 0.22)
+private let settingsAccentColor = Color(red: 0.95, green: 0.52, blue: 0.16)
 
 private struct SettingsPageBackground: View {
     var body: some View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.99, green: 0.97, blue: 0.93),
-                    Color(red: 0.99, green: 0.98, blue: 0.95)
+                    Color(red: 0.995, green: 0.995, blue: 0.992),
+                    Color(red: 0.989, green: 0.989, blue: 0.982)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
 
             Circle()
-                .fill(Color(red: 0.98, green: 0.87, blue: 0.68).opacity(0.26))
+                .fill(Color.white.opacity(0.18))
                 .frame(width: 260, height: 260)
-                .blur(radius: 40)
+                .blur(radius: 46)
                 .offset(x: -120, y: -320)
 
             Circle()
-                .fill(Color(red: 0.99, green: 0.93, blue: 0.80).opacity(0.22))
+                .fill(Color(red: 0.94, green: 0.94, blue: 0.94).opacity(0.14))
                 .frame(width: 300, height: 300)
-                .blur(radius: 48)
+                .blur(radius: 54)
                 .offset(x: 140, y: -250)
         }
         .ignoresSafeArea()
@@ -548,17 +548,17 @@ private struct APIKeySettingsView: View {
                         .disabled(viewModel.isLoading)
                     }
 
-                    if let refreshSuccessMessage {
-                        Text(refreshSuccessMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.green)
-                    }
+                if let refreshSuccessMessage {
+                    Text(refreshSuccessMessage)
+                        .font(.footnote)
+                        .foregroundStyle(Color(red: 0.12, green: 0.72, blue: 0.67))
+                }
 
-                    if let refreshFailureMessage {
-                        Text(refreshFailureMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
+                if let refreshFailureMessage {
+                    Text(refreshFailureMessage)
+                        .font(.footnote)
+                        .foregroundStyle(Color(red: 0.93, green: 0.19, blue: 0.23))
+                }
 
                     Text("Token 不会上传到第三方服务，仅用于本地请求行情。")
                         .font(.footnote)

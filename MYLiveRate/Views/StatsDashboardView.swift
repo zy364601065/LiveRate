@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import UIKit
 
 struct StatsDashboardView: View {
     private enum ConsecutiveTrendType {
@@ -85,10 +86,28 @@ struct StatsDashboardView: View {
     private let negativeColor = Color(red: 0.12, green: 0.72, blue: 0.67)
     private let accentBlue = Color(red: 0.95, green: 0.52, blue: 0.16)
     private let selectedDayBorderColor = Color(red: 0.77, green: 0.58, blue: 0.31)
-    private let titleColor = Color(red: 0.06, green: 0.10, blue: 0.18)
-    private let subtitleColor = Color(red: 0.22, green: 0.28, blue: 0.38)
-    private let pageBackgroundTop = Color(red: 0.995, green: 0.995, blue: 0.992)
-    private let pageBackgroundBottom = Color(red: 0.989, green: 0.989, blue: 0.982)
+    private let titleColor = Color(uiColor: .label)
+    private let subtitleColor = Color(uiColor: .secondaryLabel)
+    private let pageBackgroundTop = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
+            : UIColor(red: 0.995, green: 0.995, blue: 0.992, alpha: 1)
+    })
+    private let pageBackgroundBottom = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.08, green: 0.08, blue: 0.09, alpha: 1)
+            : UIColor(red: 0.989, green: 0.989, blue: 0.982, alpha: 1)
+    })
+    private let glassFillColor = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 0.50)
+            : UIColor(white: 1, alpha: 0.20)
+    })
+    private let glassStrokeColor = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(white: 1, alpha: 0.12)
+            : UIColor(white: 1, alpha: 0.62)
+    })
     private let calendarCellSpacing: CGFloat = 4
     private let dailyVisibleDays = 7
     private let weeklyVisibleWeeks = 8
@@ -193,7 +212,7 @@ struct StatsDashboardView: View {
 
     private func signedAmountColor(_ value: Double, zeroColor: Color = .secondary) -> Color {
         if hideStatsNumbers {
-            return Color(red: 0.35, green: 0.40, blue: 0.47)
+            return Color(uiColor: .tertiaryLabel)
         }
         if value > 0 { return positiveColor }
         if value < 0 { return negativeColor }
@@ -816,9 +835,8 @@ struct StatsDashboardView: View {
     private func currentConsecutiveTrendStatus() -> ConsecutiveTrendStatus? {
         let calendar = marketCalendar
         let hintInput = consecutiveTrendHintInput(calendar: calendar)
-        let amountByDay = hintInput.amountByDay
-        let latestDataDay = hintInput.latestDataDay
-        guard let latestAmount = amountByDay[latestDataDay] else {
+        let sortedEntries = hintInput.amountByDay.sorted { $0.key > $1.key }
+        guard let latestAmount = sortedEntries.first?.value else {
             return nil
         }
 
@@ -828,13 +846,9 @@ struct StatsDashboardView: View {
 
         let isProfit = latestAmount > 0
         var streakCount = 0
-        var cursor = latestDataDay
 
-        while true {
-            guard let amount = amountByDay[cursor] else {
-                break
-            }
-
+        for entry in sortedEntries {
+            let amount = entry.value
             if isProfit {
                 guard amount > 0 else { break }
             } else {
@@ -842,11 +856,6 @@ struct StatsDashboardView: View {
             }
 
             streakCount += 1
-
-            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: cursor) else {
-                break
-            }
-            cursor = previousDay
         }
 
         guard streakCount >= 4 else {
@@ -1041,7 +1050,7 @@ struct StatsDashboardView: View {
         let opacity = 0.14 + (heat * 0.16)
 
         if hideStatsNumbers {
-            return Color(red: 0.84, green: 0.83, blue: 0.80).opacity(isSelected ? opacity + 0.07 : opacity)
+            return Color(uiColor: .tertiarySystemFill).opacity(isSelected ? 0.90 : 0.64)
         }
 
         if amount > 0 {
@@ -1050,7 +1059,7 @@ struct StatsDashboardView: View {
         if amount < 0 {
             return negativeColor.opacity(isSelected ? opacity + 0.07 : opacity)
         }
-        return Color(red: 0.98, green: 0.92, blue: 0.82).opacity(isSelected ? 0.34 : 0.22)
+        return Color(uiColor: .tertiarySystemFill).opacity(isSelected ? 0.82 : 0.52)
     }
 
     private func dayPrimaryTextColor(for day: Date, isSelected: Bool) -> Color {
@@ -1152,7 +1161,7 @@ struct StatsDashboardView: View {
             .background(.thinMaterial, in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(.white.opacity(0.6), lineWidth: 1)
+                    .stroke(glassStrokeColor, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -1257,7 +1266,7 @@ struct StatsDashboardView: View {
             .background(.thinMaterial, in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(.white.opacity(0.6), lineWidth: 1)
+                    .stroke(glassStrokeColor, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -1297,8 +1306,8 @@ struct StatsDashboardView: View {
                             .padding(.vertical, 10)
                             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .overlay {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(.white.opacity(0.6), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(glassStrokeColor, lineWidth: 1)
                             }
                         }
                         .buttonStyle(.plain)
@@ -1316,11 +1325,11 @@ struct StatsDashboardView: View {
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.22))
+                    .fill(glassFillColor)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(.white.opacity(0.64), lineWidth: 1)
+                            .stroke(glassStrokeColor, lineWidth: 1)
                     }
             )
             .padding(.horizontal, 14)
@@ -1795,48 +1804,14 @@ struct StatsDashboardView: View {
     }
 
     private var keyStatsSection: some View {
-        let columns = [
-            GridItem(.flexible(), spacing: 10),
-            GridItem(.flexible(), spacing: 10)
-        ]
-
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("关键统计")
                 .font(.system(size: 19, weight: .bold, design: .rounded))
                 .foregroundStyle(titleColor)
 
-            LazyVGrid(columns: columns, spacing: 10) {
+            VStack(spacing: 8) {
                 ForEach(Array(keyStatsItems.enumerated()), id: \.offset) { _, item in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(item.title)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 8) {
-                            Text(item.day)
-                                .font(.footnote.weight(.medium))
-                                .foregroundStyle(titleColor.opacity(0.88))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-
-                            Spacer(minLength: 4)
-
-                            Text(item.amount)
-                                .font(.footnote.weight(.bold))
-                                .monospacedDigit()
-                                .foregroundStyle(item.tone)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(.white.opacity(0.56), lineWidth: 1)
-                    }
+                    keyStatRow(item)
                 }
             }
         }
@@ -1844,13 +1819,50 @@ struct StatsDashboardView: View {
         .background(glassCardBackground(cornerRadius: 28))
     }
 
+    private func keyStatRow(_ item: (title: String, day: String, amount: String, tone: Color)) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(item.tone)
+                .frame(width: 3, height: 34)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(item.day)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(titleColor.opacity(0.86))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            Spacer(minLength: 8)
+
+            Text(item.amount)
+                .font(.subheadline.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(item.tone)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 190, alignment: .trailing)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(glassStrokeColor, lineWidth: 1)
+        }
+    }
+
     private func glassCardBackground(cornerRadius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color.white.opacity(0.20))
+            .fill(glassFillColor)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(.white.opacity(0.62), lineWidth: 1)
+                    .stroke(glassStrokeColor, lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 5)
     }
@@ -1864,13 +1876,13 @@ struct StatsDashboardView: View {
             )
 
             Circle()
-                .fill(Color.white.opacity(0.18))
+                .fill(Color(uiColor: .systemGray5).opacity(0.12))
                 .frame(width: 280, height: 280)
                 .blur(radius: 46)
                 .offset(x: -110, y: -360)
 
             Circle()
-                .fill(Color(red: 0.94, green: 0.94, blue: 0.94).opacity(0.14))
+                .fill(accentBlue.opacity(0.08))
                 .frame(width: 300, height: 300)
                 .blur(radius: 52)
                 .offset(x: 130, y: -240)

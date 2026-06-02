@@ -14,9 +14,33 @@ struct LiveRateTabView: View {
 
     private let profitColor = Color(red: 0.93, green: 0.19, blue: 0.23)
     private let lossColor = Color(red: 0.12, green: 0.72, blue: 0.67)
-    private let navy = Color(red: 0.06, green: 0.10, blue: 0.18)
+    private let navy = Color(uiColor: .label)
     private let accentBlue = Color(red: 0.95, green: 0.52, blue: 0.16)
-    private let pageBg = Color(red: 0.995, green: 0.995, blue: 0.992)
+    private let pageBg = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
+            : UIColor(red: 0.995, green: 0.995, blue: 0.992, alpha: 1)
+    })
+    private let pageBgMid = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.06, green: 0.06, blue: 0.07, alpha: 1)
+            : UIColor(red: 0.993, green: 0.993, blue: 0.988, alpha: 1)
+    })
+    private let pageBgBottom = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.08, green: 0.08, blue: 0.09, alpha: 1)
+            : UIColor(red: 0.989, green: 0.989, blue: 0.982, alpha: 1)
+    })
+    private let glassStrokeColor = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(white: 1, alpha: 0.12)
+            : UIColor(white: 1, alpha: 0.55)
+    })
+    private let glassFillColor = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 0.50)
+            : UIColor(white: 1, alpha: 0.20)
+    })
     private let coreRateCodes = ["CNY", "HKD"]
     private let rateGridColumns = [
         GridItem(.flexible(), spacing: 10),
@@ -175,7 +199,7 @@ struct LiveRateTabView: View {
                     .padding(.vertical, 8)
                     .background(.thinMaterial, in: Capsule())
                     .overlay {
-                        Capsule().stroke(.white.opacity(0.52), lineWidth: 1)
+                        Capsule().stroke(glassStrokeColor, lineWidth: 1)
                     }
                     .foregroundStyle(accentBlue)
                 }
@@ -189,7 +213,7 @@ struct LiveRateTabView: View {
             }
         }
         .padding(12)
-        .background(glassCard(cornerRadius: 18, tint: Color.white.opacity(0.18)))
+        .background(glassCard(cornerRadius: 18, tint: glassFillColor))
     }
 
     private func statusTag(icon: String, text: String) -> some View {
@@ -199,7 +223,7 @@ struct LiveRateTabView: View {
                 .lineLimit(1)
         }
         .font(.caption2.weight(.medium))
-        .foregroundStyle(navy.opacity(0.85))
+        .foregroundStyle(Color(uiColor: .secondaryLabel))
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(.regularMaterial, in: Capsule())
@@ -214,7 +238,7 @@ struct LiveRateTabView: View {
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(red: 0.99, green: 0.93, blue: 0.94))
+                        .fill(Color(uiColor: .tertiarySystemFill))
                         .frame(width: 34, height: 34)
                         .overlay {
                             Text("$")
@@ -245,19 +269,19 @@ struct LiveRateTabView: View {
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(.white.opacity(0.60), lineWidth: 1)
+                        .stroke(glassStrokeColor, lineWidth: 1)
                 }
 
                 Button {
                     openPhotoPickerIfPermitted()
                 } label: {
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.white.opacity(0.24))
+                        .fill(glassFillColor)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .frame(width: 40, height: 40)
                         .overlay {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(.white.opacity(0.62), lineWidth: 1)
+                                .stroke(glassStrokeColor, lineWidth: 1)
                         }
                         .overlay {
                             Image(systemName: "camera.fill")
@@ -301,7 +325,7 @@ struct LiveRateTabView: View {
             }
         }
         .padding(10)
-        .background(glassCard(cornerRadius: 16, tint: Color.white.opacity(0.20)))
+        .background(glassCard(cornerRadius: 16, tint: glassFillColor))
     }
 
     private func openPhotoPickerIfPermitted() {
@@ -389,10 +413,15 @@ struct LiveRateTabView: View {
 
     @ViewBuilder
     private func backgroundForRateCard(emphasized: Bool) -> some View {
-        glassCard(cornerRadius: 12, tint: emphasized ? Color(red: 0.98, green: 0.92, blue: 0.78).opacity(0.34) : Color.white.opacity(0.16))
+        glassCard(
+            cornerRadius: 12,
+            tint: emphasized
+                ? accentBlue.opacity(0.18)
+                : Color(uiColor: .secondarySystemFill).opacity(0.36)
+        )
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(emphasized ? accentBlue.opacity(0.45) : .white.opacity(0.38), lineWidth: emphasized ? 1.3 : 1)
+                    .stroke(emphasized ? accentBlue.opacity(0.45) : glassStrokeColor, lineWidth: emphasized ? 1.3 : 1)
             }
     }
 
@@ -437,21 +466,21 @@ struct LiveRateTabView: View {
             LinearGradient(
                 colors: [
                     pageBg,
-                    Color(red: 0.993, green: 0.993, blue: 0.988),
-                    Color(red: 0.989, green: 0.989, blue: 0.982)
+                    pageBgMid,
+                    pageBgBottom
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
 
             Circle()
-                .fill(Color.white.opacity(0.18))
+                .fill(Color(uiColor: .systemGray5).opacity(0.12))
                 .frame(width: 260, height: 260)
                 .blur(radius: 44)
                 .offset(x: -130, y: -300)
 
             Circle()
-                .fill(Color(red: 0.94, green: 0.94, blue: 0.94).opacity(0.14))
+                .fill(accentBlue.opacity(0.08))
                 .frame(width: 280, height: 280)
                 .blur(radius: 48)
                 .offset(x: 130, y: -220)
@@ -464,7 +493,7 @@ struct LiveRateTabView: View {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(.white.opacity(0.55), lineWidth: 1)
+                    .stroke(glassStrokeColor, lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 4)
     }

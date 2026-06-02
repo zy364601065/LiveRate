@@ -1,11 +1,20 @@
 import SwiftUI
+import UIKit
 
 struct LiveStockTabView: View {
     @ObservedObject var viewModel: ExchangeRateViewModel
     @FocusState private var isStockFieldFocused: Bool
     @State private var manualInputSymbol = ""
-    private let pageBackgroundTop = Color(red: 0.995, green: 0.995, blue: 0.992)
-    private let pageBackgroundBottom = Color(red: 0.989, green: 0.989, blue: 0.982)
+    private let pageBackgroundTop = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
+            : UIColor(red: 0.995, green: 0.995, blue: 0.992, alpha: 1)
+    })
+    private let pageBackgroundBottom = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.08, green: 0.08, blue: 0.09, alpha: 1)
+            : UIColor(red: 0.989, green: 0.989, blue: 0.982, alpha: 1)
+    })
 
     private var stockTimeFormatter: DateFormatter {
         let formatter = DateFormatter()

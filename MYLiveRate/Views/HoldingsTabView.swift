@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 
 struct HoldingsTabView: View {
     @ObservedObject var viewModel: ExchangeRateViewModel
@@ -7,8 +8,16 @@ struct HoldingsTabView: View {
     @State private var editingHoldingID: UUID?
     @State private var draftName = ""
     @State private var draftCode = ""
-    private let pageBackgroundTop = Color(red: 0.995, green: 0.995, blue: 0.992)
-    private let pageBackgroundBottom = Color(red: 0.989, green: 0.989, blue: 0.982)
+    private let pageBackgroundTop = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
+            : UIColor(red: 0.995, green: 0.995, blue: 0.992, alpha: 1)
+    })
+    private let pageBackgroundBottom = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.08, green: 0.08, blue: 0.09, alpha: 1)
+            : UIColor(red: 0.989, green: 0.989, blue: 0.982, alpha: 1)
+    })
 
     private var timeFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -210,8 +219,8 @@ struct HoldingsTabView: View {
 
     private func signedColor(_ value: Double?) -> Color {
         guard let value else { return .primary }
-        if value > 0 { return .red }
-        if value < 0 { return .green }
+        if value > 0 { return Color(red: 0.93, green: 0.19, blue: 0.23) }
+        if value < 0 { return Color(red: 0.12, green: 0.72, blue: 0.67) }
         return .primary
     }
 

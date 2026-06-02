@@ -1,31 +1,52 @@
 import SwiftUI
+import UIKit
 
 private let appThemeStorageKey = "myliverate.app_theme"
 private let defaultLandingTabStorageKey = "myliverate.default_landing_tab"
 
-private let settingsTitleColor = Color(red: 0.10, green: 0.16, blue: 0.24)
+private let settingsTitleColor = Color(uiColor: .label)
 private let settingsAccentColor = Color(red: 0.95, green: 0.52, blue: 0.16)
+private let settingsBackgroundTop = Color(uiColor: UIColor { trait in
+    trait.userInterfaceStyle == .dark
+        ? UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
+        : UIColor(red: 0.995, green: 0.995, blue: 0.992, alpha: 1)
+})
+private let settingsBackgroundBottom = Color(uiColor: UIColor { trait in
+    trait.userInterfaceStyle == .dark
+        ? UIColor(red: 0.08, green: 0.08, blue: 0.09, alpha: 1)
+        : UIColor(red: 0.989, green: 0.989, blue: 0.982, alpha: 1)
+})
+private let settingsGlassFill = Color(uiColor: UIColor { trait in
+    trait.userInterfaceStyle == .dark
+        ? UIColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 0.52)
+        : UIColor(white: 1, alpha: 0.20)
+})
+private let settingsGlassStroke = Color(uiColor: UIColor { trait in
+    trait.userInterfaceStyle == .dark
+        ? UIColor(white: 1, alpha: 0.12)
+        : UIColor(white: 1, alpha: 0.58)
+})
 
 private struct SettingsPageBackground: View {
     var body: some View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.995, green: 0.995, blue: 0.992),
-                    Color(red: 0.989, green: 0.989, blue: 0.982)
+                    settingsBackgroundTop,
+                    settingsBackgroundBottom
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
 
             Circle()
-                .fill(Color.white.opacity(0.18))
+                .fill(Color(uiColor: .systemGray5).opacity(0.12))
                 .frame(width: 260, height: 260)
                 .blur(radius: 46)
                 .offset(x: -120, y: -320)
 
             Circle()
-                .fill(Color(red: 0.94, green: 0.94, blue: 0.94).opacity(0.14))
+                .fill(settingsAccentColor.opacity(0.08))
                 .frame(width: 300, height: 300)
                 .blur(radius: 54)
                 .offset(x: 140, y: -250)
@@ -37,14 +58,14 @@ private struct SettingsPageBackground: View {
 private struct SettingsGlassRowBackground: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color.white.opacity(0.20))
+            .fill(settingsGlassFill)
             .background(
                 .ultraThinMaterial,
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(.white.opacity(0.58), lineWidth: 1)
+                    .stroke(settingsGlassStroke, lineWidth: 1)
             }
     }
 }
@@ -242,6 +263,7 @@ struct SettingsTabView: View {
             .scrollContentBackground(.hidden)
             .background(SettingsPageBackground())
             .listStyle(.insetGrouped)
+            .listRowSpacing(8)
             .navigationTitle("设置")
         }
     }
@@ -514,7 +536,7 @@ private struct APIKeySettingsView: View {
                         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(.white.opacity(0.55), lineWidth: 1)
+                                .stroke(settingsGlassStroke, lineWidth: 1)
                         }
                         .onSubmit {
                             saveTokenWithFeedback()

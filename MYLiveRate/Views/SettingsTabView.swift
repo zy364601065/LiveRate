@@ -113,18 +113,28 @@ private struct SettingsTagChip: View {
     let isSelected: Bool
 
     var body: some View {
-        Text(text)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(isSelected ? settingsAccentColor : settingsTitleColor.opacity(0.82))
-            .padding(.horizontal, 11)
+        HStack(spacing: 5) {
+            if isSelected {
+                Circle()
+                    .fill(settingsAccentColor)
+                    .frame(width: 5, height: 5)
+            }
+
+            Text(text)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(isSelected ? settingsTitleColor : settingsTitleColor.opacity(0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+            .padding(.horizontal, isSelected ? 10 : 11)
             .padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? settingsAccentColor.opacity(0.16) : Color.white.opacity(0.2))
+                    .fill(isSelected ? settingsAccentColor.opacity(0.09) : settingsGlassFill.opacity(0.70))
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected ? settingsAccentColor.opacity(0.34) : .white.opacity(0.48), lineWidth: 1)
+                    .stroke(isSelected ? settingsAccentColor.opacity(0.48) : settingsGlassStroke, lineWidth: 1)
             }
     }
 }
@@ -182,9 +192,17 @@ private struct SettingsSelectionRow: View {
             Spacer(minLength: 8)
 
             if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(settingsAccentColor)
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(settingsAccentColor)
+                        .frame(width: 6, height: 6)
+                    Text("已选")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(settingsAccentColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(settingsAccentColor.opacity(0.10), in: Capsule())
             }
         }
         .padding(.vertical, 5)

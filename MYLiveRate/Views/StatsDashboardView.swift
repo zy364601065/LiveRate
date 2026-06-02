@@ -85,7 +85,6 @@ struct StatsDashboardView: View {
     private let positiveColor = Color(red: 0.93, green: 0.19, blue: 0.23)
     private let negativeColor = Color(red: 0.12, green: 0.72, blue: 0.67)
     private let accentBlue = Color(red: 0.95, green: 0.52, blue: 0.16)
-    private let selectedDayBorderColor = Color(red: 0.77, green: 0.58, blue: 0.31)
     private let titleColor = Color(uiColor: .label)
     private let subtitleColor = Color(uiColor: .secondaryLabel)
     private let pageBackgroundTop = Color(uiColor: UIColor { trait in
@@ -1050,16 +1049,16 @@ struct StatsDashboardView: View {
         let opacity = 0.14 + (heat * 0.16)
 
         if hideStatsNumbers {
-            return Color(uiColor: .tertiarySystemFill).opacity(isSelected ? 0.90 : 0.64)
+            return Color(uiColor: .tertiarySystemFill).opacity(isSelected ? 0.78 : 0.60)
         }
 
         if amount > 0 {
-            return positiveColor.opacity(isSelected ? opacity + 0.07 : opacity)
+            return positiveColor.opacity(isSelected ? opacity + 0.04 : opacity)
         }
         if amount < 0 {
-            return negativeColor.opacity(isSelected ? opacity + 0.07 : opacity)
+            return negativeColor.opacity(isSelected ? opacity + 0.04 : opacity)
         }
-        return Color(uiColor: .tertiarySystemFill).opacity(isSelected ? 0.82 : 0.52)
+        return Color(uiColor: .tertiarySystemFill).opacity(isSelected ? 0.68 : 0.50)
     }
 
     private func dayPrimaryTextColor(for day: Date, isSelected: Bool) -> Color {
@@ -1382,7 +1381,7 @@ struct StatsDashboardView: View {
 
     private func dayCellBorderColor(for day: Date, isSelected: Bool) -> Color {
         guard isSelected else { return .clear }
-        return selectedDayBorderColor
+        return accentBlue.opacity(0.34)
     }
 
     private var calendarGrid: some View {
@@ -1431,7 +1430,7 @@ struct StatsDashboardView: View {
                             .background(dayCellBackground(for: date, isSelected: isSelected), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(dayCellBorderColor(for: date, isSelected: isSelected), lineWidth: isSelected ? 1.5 : 0)
+                                    .stroke(dayCellBorderColor(for: date, isSelected: isSelected), lineWidth: isSelected ? 1 : 0)
                             }
                             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }

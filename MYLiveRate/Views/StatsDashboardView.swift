@@ -52,6 +52,36 @@ struct StatsDashboardView: View {
         var id: String { rawValue }
     }
 
+    private enum KeyStatMood: Equatable {
+        case profit
+        case loss
+    }
+
+    private enum LuluCalendarMood: Equatable {
+        case profit
+        case loss
+        case defaultAsset
+    }
+
+    private enum CalendarMoodPresentation: Equatable {
+        case standard(KeyStatMood)
+        case lulu(LuluCalendarMood)
+    }
+
+    private struct KeyStatItem {
+        let title: String
+        let day: String
+        let amount: String
+        let tone: Color
+
+        init(title: String, day: String, amount: String, tone: Color) {
+            self.title = title
+            self.day = day
+            self.amount = amount
+            self.tone = tone
+        }
+    }
+
     private enum TrendChartStyle: String, CaseIterable, Identifiable {
         case bar = "柱状"
         case line = "折线"
@@ -76,7 +106,12 @@ struct StatsDashboardView: View {
     @State private var hasInitializedSelection = false
     @State private var isCurrencyPickerPresented = false
     @State private var displayedConsecutiveTrendHint: ConsecutiveTrendHint?
+    @State private var randomizedLuluAssetFileName: String?
     @AppStorage(trendHintToneStorageKey) private var trendHintToneRawValue: String = TrendHintTone.wild.rawValue
+    @AppStorage(statsMoodModeStorageKey) private var statsMoodModeRawValue: String = StatsMoodMode.standard.rawValue
+    @AppStorage(luluMoodBehaviorStorageKey) private var luluMoodBehaviorRawValue: String = LuluMoodBehavior.random.rawValue
+    @AppStorage(luluHappyAssetStorageKey) private var luluHappyAssetRawValue: String = LuluHappyAsset.happy1.rawValue
+    @AppStorage(luluBadAssetStorageKey) private var luluBadAssetRawValue: String = LuluBadAsset.bad1.rawValue
     @AppStorage("myliverate.stats.hide_numbers") private var hideStatsNumbers = false
 #if DEBUG
     @AppStorage(trendHintLabScenarioStorageKey) private var trendHintLabScenarioRawValue: String = TrendHintLabScenario.none.rawValue
@@ -117,6 +152,22 @@ struct StatsDashboardView: View {
 
     private var selectedTrendHintTone: TrendHintTone {
         TrendHintTone(rawValue: trendHintToneRawValue) ?? .wild
+    }
+
+    private var selectedStatsMoodMode: StatsMoodMode {
+        StatsMoodMode(rawValue: statsMoodModeRawValue) ?? .standard
+    }
+
+    private var selectedLuluMoodBehavior: LuluMoodBehavior {
+        LuluMoodBehavior(rawValue: luluMoodBehaviorRawValue) ?? .random
+    }
+
+    private var selectedLuluHappyAsset: LuluHappyAsset {
+        LuluHappyAsset(rawValue: luluHappyAssetRawValue) ?? .happy1
+    }
+
+    private var selectedLuluBadAsset: LuluBadAsset {
+        LuluBadAsset(rawValue: luluBadAssetRawValue) ?? .bad1
     }
 
     private func maskedNumericText(_ text: String) -> String {
@@ -186,6 +237,14 @@ struct StatsDashboardView: View {
     private var marketCalendar: Calendar {
         var calendar = viewModel.marketCalendar
         calendar.locale = Locale(identifier: "zh_Hans_CN")
+        calendar.firstWeekday = 1
+        return calendar
+    }
+
+    private var localDisplayCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "zh_Hans_CN")
+        calendar.timeZone = .current
         calendar.firstWeekday = 1
         return calendar
     }
@@ -702,8 +761,23 @@ struct StatsDashboardView: View {
         return formatter.string(from: day)
     }
 
+    private var keyStatsScopeRows: [DailyAmountRow] {
+        switch summaryPeriod {
+        case .currentWeek:
+            let range = currentWeekRange
+            return rows.filter {
+                let day = marketCalendar.startOfDay(for: $0.day)
+                return day >= range.start && day <= range.end
+            }
+        case .currentMonth:
+            return currentMonthRows
+        case .allTime:
+            return rows
+        }
+    }
+
     private var maxProfitDayStat: (day: Date, amount: Double)? {
-        guard let row = rows.max(by: { $0.convertedAmount < $1.convertedAmount }),
+        guard let row = keyStatsScopeRows.max(by: { $0.convertedAmount < $1.convertedAmount }),
               row.convertedAmount > 0 else {
             return nil
         }
@@ -711,7 +785,7 @@ struct StatsDashboardView: View {
     }
 
     private var maxLossDayStat: (day: Date, amount: Double)? {
-        guard let row = rows.min(by: { $0.convertedAmount < $1.convertedAmount }),
+        guard let row = keyStatsScopeRows.min(by: { $0.convertedAmount < $1.convertedAmount }),
               row.convertedAmount < 0 else {
             return nil
         }
@@ -721,6 +795,101 @@ struct StatsDashboardView: View {
     private var currentMonthRows: [DailyAmountRow] {
         let calendar = marketCalendar
         return rows.filter { calendar.isDate($0.day, equalTo: displayedMonth, toGranularity: .month) }
+    }
+
+    private func calendarMood(for date: Date) -> KeyStatMood? {
+        guard let amount = amountValue(for: date) else {
+            return nil
+        }
+
+        if amount > 0 {
+            return .profit
+        }
+
+        if amount < 0 {
+            return .loss
+        }
+
+        return nil
+    }
+
+    private func luluCalendarMood(for date: Date) -> LuluCalendarMood? {
+        guard let amount = amountValue(for: date) else {
+            return .defaultAsset
+        }
+
+        if amount > 0 {
+            return .profit
+        }
+
+        if amount < 0 {
+            return .loss
+        }
+
+        return nil
+    }
+
+    private var selectedCalendarPresentation: CalendarMoodPresentation? {
+        switch selectedStatsMoodMode {
+        case .standard:
+            guard let mood = calendarMood(for: selectedDay) else { return nil }
+            return .standard(mood)
+        case .lulu:
+            guard let mood = luluCalendarMood(for: selectedDay) else { return nil }
+            return .lulu(mood)
+        }
+    }
+
+    private func refreshSelectedLuluAsset() {
+        guard selectedStatsMoodMode == .lulu else {
+            randomizedLuluAssetFileName = nil
+            return
+        }
+
+        guard let mood = luluCalendarMood(for: selectedDay) else {
+            randomizedLuluAssetFileName = nil
+            return
+        }
+
+        switch mood {
+        case .defaultAsset:
+            randomizedLuluAssetFileName = luluDefaultGIFName
+        case .profit:
+            switch selectedLuluMoodBehavior {
+            case .random:
+                randomizedLuluAssetFileName = LuluHappyAsset.allCases.randomElement()?.fileName
+            case .manual:
+                randomizedLuluAssetFileName = selectedLuluHappyAsset.fileName
+            }
+        case .loss:
+            switch selectedLuluMoodBehavior {
+            case .random:
+                randomizedLuluAssetFileName = LuluBadAsset.allCases.randomElement()?.fileName
+            case .manual:
+                randomizedLuluAssetFileName = selectedLuluBadAsset.fileName
+            }
+        }
+    }
+
+    private func resolvedLuluAssetFileName(for mood: LuluCalendarMood) -> String? {
+        switch mood {
+        case .defaultAsset:
+            return luluDefaultGIFName
+        case .profit:
+            switch selectedLuluMoodBehavior {
+            case .random:
+                return randomizedLuluAssetFileName ?? LuluHappyAsset.allCases.first?.fileName
+            case .manual:
+                return selectedLuluHappyAsset.fileName
+            }
+        case .loss:
+            switch selectedLuluMoodBehavior {
+            case .random:
+                return randomizedLuluAssetFileName ?? LuluBadAsset.allCases.first?.fileName
+            case .manual:
+                return selectedLuluBadAsset.fileName
+            }
+        }
     }
 
     private var monthWinRateStat: (wins: Int, total: Int, rate: Double)? {
@@ -751,7 +920,7 @@ struct StatsDashboardView: View {
         return (delta, percent)
     }
 
-    private var keyStatsItems: [(title: String, day: String, amount: String, tone: Color)] {
+    private var keyStatsItems: [KeyStatItem] {
         let profit: (String, String) = {
             guard let stat = maxProfitDayStat else { return ("--", "--") }
             return (dayText(stat.day), compactAmountText(stat.amount))
@@ -779,15 +948,20 @@ struct StatsDashboardView: View {
         }()
 
         let rawItems = [
-            ("最大盈利日", profit.0, profit.1, positiveColor),
-            ("最大亏损日", loss.0, loss.1, negativeColor),
-            ("胜率", winRate.0, winRate.1, winRate.2),
-            ("环比变化", monthVsMonth.0, monthVsMonth.1, monthVsMonth.2)
+            KeyStatItem(title: "最大盈利日", day: profit.0, amount: profit.1, tone: positiveColor),
+            KeyStatItem(title: "最大亏损日", day: loss.0, amount: loss.1, tone: negativeColor),
+            KeyStatItem(title: "胜率", day: winRate.0, amount: winRate.1, tone: winRate.2),
+            KeyStatItem(title: "环比变化", day: monthVsMonth.0, amount: monthVsMonth.1, tone: monthVsMonth.2)
         ]
 
         guard hideStatsNumbers else { return rawItems }
         return rawItems.map { item in
-            (item.0, maskedNumericText(item.1), maskedNumericText(item.2), subtitleColor)
+            KeyStatItem(
+                title: item.title,
+                day: maskedNumericText(item.day),
+                amount: maskedNumericText(item.amount),
+                tone: subtitleColor
+            )
         }
     }
 
@@ -995,8 +1169,9 @@ struct StatsDashboardView: View {
 
     private var weekdaySymbols: [String] { ["日", "一", "二", "三", "四", "五", "六"] }
 
-    private var todayInMarketCalendar: Date {
-        marketCalendar.startOfDay(for: Date())
+    private var todayInCalendarGrid: Date {
+        let components = localDisplayCalendar.dateComponents([.year, .month, .day], from: Date())
+        return marketCalendar.date(from: components) ?? marketCalendar.startOfDay(for: Date())
     }
 
     private func normalizedCalendarDay(_ day: Date) -> Date {
@@ -1012,11 +1187,11 @@ struct StatsDashboardView: View {
             return hideStatsNumbers ? hiddenValueMask : String(format: "%+.2f", amount)
         }
 
-        if marketCalendar.isDate(normalizedDay, inSameDayAs: todayInMarketCalendar) {
+        if marketCalendar.isDate(normalizedDay, inSameDayAs: todayInCalendarGrid) {
             return "未更新"
         }
 
-        if normalizedDay < todayInMarketCalendar {
+        if normalizedDay < todayInCalendarGrid {
             return nil
         }
 
@@ -1028,7 +1203,7 @@ struct StatsDashboardView: View {
     }
 
     private func isFutureCalendarDay(_ day: Date) -> Bool {
-        normalizedCalendarDay(day) > todayInMarketCalendar
+        normalizedCalendarDay(day) > todayInCalendarGrid
     }
 
     private func hasRecordedAmount(for day: Date) -> Bool {
@@ -1197,6 +1372,24 @@ struct StatsDashboardView: View {
                 syncMonthlySelectionFromScrollPosition(newValue)
             }
         }
+        .onChange(of: selectedDay) { _, _ in
+            refreshSelectedLuluAsset()
+        }
+        .onChange(of: statsMoodModeRawValue) { _, _ in
+            refreshSelectedLuluAsset()
+        }
+        .onChange(of: luluMoodBehaviorRawValue) { _, _ in
+            refreshSelectedLuluAsset()
+        }
+        .onChange(of: luluHappyAssetRawValue) { _, _ in
+            refreshSelectedLuluAsset()
+        }
+        .onChange(of: luluBadAssetRawValue) { _, _ in
+            refreshSelectedLuluAsset()
+        }
+        .onChange(of: monthAmountMap) { _, _ in
+            refreshSelectedLuluAsset()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 currencyMenu
@@ -1219,10 +1412,11 @@ struct StatsDashboardView: View {
             displayedMonth = latestDay
             selectedDay = latestDay
         } else {
-            let todayInMarket = marketCalendar.startOfDay(for: Date())
-            displayedMonth = todayInMarket
-            selectedDay = todayInMarket
+            displayedMonth = todayInCalendarGrid
+            selectedDay = todayInCalendarGrid
         }
+
+        refreshSelectedLuluAsset()
         
         DispatchQueue.main.async {
             self.alignSelectedDailySlotToLatest()
@@ -1418,7 +1612,7 @@ struct StatsDashboardView: View {
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.5)
                                         .padding(.horizontal, 2)
-                                } else if marketCalendar.isDate(normalizedCalendarDay(date), inSameDayAs: todayInMarketCalendar),
+                                } else if marketCalendar.isDate(normalizedCalendarDay(date), inSameDayAs: todayInCalendarGrid),
                                           amountValue(for: date) == nil {
                                     Text("未更新")
                                         .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -1462,7 +1656,82 @@ struct StatsDashboardView: View {
             calendarGrid
         }
         .padding(16)
-        .background(glassCardBackground(cornerRadius: 28))
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(glassFillColor)
+                    .background(
+                        .ultraThinMaterial,
+                        in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    )
+
+                GeometryReader { proxy in
+                    if let presentation = selectedCalendarPresentation {
+                        let backgroundSize = CGSize(
+                            width: max(proxy.size.width - 2, 0),
+                            height: max(proxy.size.height - 2, 0)
+                        )
+
+                        calendarMoodBackground(for: presentation, containerSize: backgroundSize)
+                            .frame(width: backgroundSize.width, height: backgroundSize.height)
+                            .opacity(hideStatsNumbers ? 0.18 : 0.30)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                            .transition(.scale(scale: 0.88).combined(with: .opacity))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
+
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(glassStrokeColor, lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 5)
+        }
+        .animation(.easeInOut(duration: 0.22), value: selectedCalendarPresentation)
+        .animation(.easeInOut(duration: 0.22), value: selectedStatsMoodMode)
+    }
+
+    @ViewBuilder
+    private func calendarMoodBackground(for presentation: CalendarMoodPresentation, containerSize: CGSize) -> some View {
+        switch presentation {
+        case .standard(let mood):
+            CalendarMoodBadgeView(
+                mood: mood,
+                positiveColor: positiveColor,
+                negativeColor: negativeColor,
+                isMuted: hideStatsNumbers
+            )
+            .frame(width: 220, height: 220)
+        case .lulu(let mood):
+            if let assetFileName = resolvedLuluAssetFileName(for: mood),
+               let animatedImage = GIFImageLoader.animatedImage(named: assetFileName) {
+                AnimatedGIFView(image: animatedImage)
+                    .frame(width: containerSize.width, height: containerSize.height)
+                    .saturation(hideStatsNumbers ? 0.38 : 1)
+            } else {
+                switch mood {
+                case .profit:
+                    CalendarMoodBadgeView(
+                        mood: .profit,
+                        positiveColor: positiveColor,
+                        negativeColor: negativeColor,
+                        isMuted: hideStatsNumbers
+                    )
+                    .frame(width: 220, height: 220)
+                case .loss:
+                    CalendarMoodBadgeView(
+                        mood: .loss,
+                        positiveColor: positiveColor,
+                        negativeColor: negativeColor,
+                        isMuted: hideStatsNumbers
+                    )
+                    .frame(width: 220, height: 220)
+                case .defaultAsset:
+                    EmptyView()
+                }
+            }
+        }
     }
 
     private var trendHeader: some View {
@@ -1818,11 +2087,11 @@ struct StatsDashboardView: View {
         .background(glassCardBackground(cornerRadius: 28))
     }
 
-    private func keyStatRow(_ item: (title: String, day: String, amount: String, tone: Color)) -> some View {
+    private func keyStatRow(_ item: KeyStatItem) -> some View {
         HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(item.tone)
-                .frame(width: 3, height: 34)
+                .frame(width: 2, height: 32)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
@@ -1852,6 +2121,117 @@ struct StatsDashboardView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(glassStrokeColor, lineWidth: 1)
+        }
+    }
+
+    private struct CalendarMoodBadgeView: View {
+        let mood: KeyStatMood
+        let positiveColor: Color
+        let negativeColor: Color
+        let isMuted: Bool
+
+        private var accentColor: Color {
+            switch mood {
+            case .profit:
+                return isMuted ? Color(uiColor: .tertiaryLabel) : positiveColor
+            case .loss:
+                return isMuted ? Color(uiColor: .tertiaryLabel) : negativeColor
+            }
+        }
+
+        private var badgeBaseColor: Color {
+            Color(uiColor: .systemBackground).opacity(isMuted ? 0.10 : 0.16)
+        }
+
+        var body: some View {
+            ZStack {
+                Circle()
+                    .fill(accentColor.opacity(isMuted ? 0.08 : 0.18))
+                    .scaleEffect(1.14)
+                    .opacity(isMuted ? 0.16 : 0.28)
+
+                Circle()
+                    .fill(badgeBaseColor)
+                    .shadow(color: accentColor.opacity(isMuted ? 0.04 : 0.12), radius: 6, x: 0, y: 2)
+
+                MoodBadgeView(
+                    mood: mood,
+                    positiveColor: positiveColor,
+                    negativeColor: negativeColor,
+                    isMuted: isMuted
+                )
+                .padding(3)
+            }
+        }
+    }
+
+    private struct MoodBadgeView: View {
+        let mood: KeyStatMood
+        let positiveColor: Color
+        let negativeColor: Color
+        let isMuted: Bool
+
+        private var accentColor: Color {
+            switch mood {
+            case .profit:
+                return isMuted ? Color(uiColor: .tertiaryLabel) : positiveColor.opacity(0.92)
+            case .loss:
+                return isMuted ? Color(uiColor: .tertiaryLabel) : negativeColor.opacity(0.96)
+            }
+        }
+
+        private var fillColor: Color {
+            switch mood {
+            case .profit:
+                return isMuted ? Color(uiColor: .secondarySystemFill) : positiveColor.opacity(0.14)
+            case .loss:
+                return isMuted ? Color(uiColor: .secondarySystemFill) : negativeColor.opacity(0.16)
+            }
+        }
+
+        private var highlightColor: Color {
+            Color.white.opacity(isMuted ? 0.32 : 0.54)
+        }
+
+        var body: some View {
+            GeometryReader { proxy in
+                let size = proxy.size
+                let mouthY = mood == .profit ? size.height * 0.58 : size.height * 0.66
+                let controlY = mood == .profit ? size.height * 0.72 : size.height * 0.52
+
+                ZStack {
+                    Circle()
+                        .fill(fillColor)
+
+                    Circle()
+                        .stroke(accentColor.opacity(isMuted ? 0.18 : 0.24), lineWidth: 1)
+
+                    Circle()
+                        .fill(highlightColor)
+                        .frame(width: size.width * 0.30, height: size.height * 0.30)
+                        .offset(x: -size.width * 0.16, y: -size.height * 0.18)
+
+                    HStack(spacing: size.width * 0.20) {
+                        Circle()
+                            .fill(accentColor)
+                            .frame(width: size.width * 0.11, height: size.height * 0.11)
+                        Circle()
+                            .fill(accentColor)
+                            .frame(width: size.width * 0.11, height: size.height * 0.11)
+                    }
+                    .offset(y: -size.height * 0.10)
+
+                    Path { path in
+                        path.move(to: CGPoint(x: size.width * 0.32, y: mouthY))
+                        path.addQuadCurve(
+                            to: CGPoint(x: size.width * 0.68, y: mouthY),
+                            control: CGPoint(x: size.width * 0.50, y: controlY)
+                        )
+                    }
+                    .stroke(accentColor, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                }
+            }
+            .aspectRatio(1, contentMode: .fit)
         }
     }
 

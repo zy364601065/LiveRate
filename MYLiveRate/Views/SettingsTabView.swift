@@ -213,6 +213,8 @@ struct SettingsTabView: View {
     @ObservedObject var viewModel: ExchangeRateViewModel
     @AppStorage(appThemeStorageKey) private var appThemeRawValue: String = AppTheme.system.rawValue
     @AppStorage(defaultLandingTabStorageKey) private var defaultLandingTabRawValue: String = DefaultLandingTab.rates.rawValue
+    @AppStorage(statsMoodModeStorageKey) private var statsMoodModeRawValue: String = StatsMoodMode.standard.rawValue
+    @AppStorage(luluMoodBehaviorStorageKey) private var luluMoodBehaviorRawValue: String = LuluMoodBehavior.random.rawValue
 
     private var selectedTheme: AppTheme {
         AppTheme(rawValue: appThemeRawValue) ?? .system
@@ -220,6 +222,23 @@ struct SettingsTabView: View {
 
     private var selectedLanding: DefaultLandingTab {
         DefaultLandingTab(rawValue: defaultLandingTabRawValue) ?? .rates
+    }
+
+    private var selectedStatsMoodMode: StatsMoodMode {
+        StatsMoodMode(rawValue: statsMoodModeRawValue) ?? .standard
+    }
+
+    private var selectedLuluMoodBehavior: LuluMoodBehavior {
+        LuluMoodBehavior(rawValue: luluMoodBehaviorRawValue) ?? .random
+    }
+
+    private var statsMoodTrailingText: String {
+        switch selectedStatsMoodMode {
+        case .standard:
+            return selectedStatsMoodMode.displayName
+        case .lulu:
+            return "\(selectedStatsMoodMode.displayName)·\(selectedLuluMoodBehavior.displayName)"
+        }
     }
 
     var body: some View {
@@ -232,8 +251,19 @@ struct SettingsTabView: View {
                         SettingsEntryRow(
                             icon: "slider.horizontal.3",
                             title: "通用设置",
-                            subtitle: "主题、展示与趋势文案模式",
+                            subtitle: "主题、展示与趋势文案",
                             trailing: selectedTheme.displayName
+                        )
+                    }
+
+                    NavigationLink {
+                        StatsMoodSettingsView()
+                    } label: {
+                        SettingsEntryRow(
+                            icon: "face.smiling",
+                            title: "统计表情",
+                            subtitle: "噜噜随机、手动与默认表情",
+                            trailing: statsMoodTrailingText
                         )
                     }
 
@@ -357,7 +387,7 @@ private struct GeneralSettingsView: View {
                     Text("通用设置")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(settingsTitleColor)
-                    Text("调整主题外观、汇率展示范围与统计提示风格。")
+                    Text("调整主题外观、汇率展示范围与统计提示。")
                         .font(.subheadline)
                         .foregroundStyle(settingsTitleColor.opacity(0.72))
                         .lineSpacing(2)
@@ -481,6 +511,423 @@ private struct GeneralSettingsView: View {
             }
             Button("取消", role: .cancel) {}
         }
+    }
+}
+
+private struct StatsMoodSettingsView: View {
+    @AppStorage(statsMoodModeStorageKey) private var statsMoodModeRawValue: String = StatsMoodMode.standard.rawValue
+    @AppStorage(luluMoodBehaviorStorageKey) private var luluMoodBehaviorRawValue: String = LuluMoodBehavior.random.rawValue
+    @AppStorage(luluHappyAssetStorageKey) private var luluHappyAssetRawValue: String = LuluHappyAsset.happy1.rawValue
+    @AppStorage(luluBadAssetStorageKey) private var luluBadAssetRawValue: String = LuluBadAsset.bad1.rawValue
+
+    private var selectedStatsMoodMode: StatsMoodMode {
+        StatsMoodMode(rawValue: statsMoodModeRawValue) ?? .standard
+    }
+
+    private var selectedLuluMoodBehavior: LuluMoodBehavior {
+        LuluMoodBehavior(rawValue: luluMoodBehaviorRawValue) ?? .random
+    }
+
+    private var selectedHappyAsset: LuluHappyAsset {
+        LuluHappyAsset(rawValue: luluHappyAssetRawValue) ?? .happy1
+    }
+
+    private var selectedBadAsset: LuluBadAsset {
+        LuluBadAsset(rawValue: luluBadAssetRawValue) ?? .bad1
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                SettingsGlassCardSection {
+                    SettingsSubpageIntroCard(
+                        title: "统计表情",
+                        subtitle: "设置统计页日历底图的表情风格。默认是原生绘制表情；噜噜支持随机和手动 GIF。",
+                        icon: "face.smiling"
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    SettingsSectionTitle(text: "表情模式")
+                    SettingsGlassCardSection {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(StatsMoodMode.allCases) { mode in
+                                StatsMoodOptionCard(
+                                    title: mode.displayName,
+                                    subtitle: mode.detailText,
+                                    icon: mode == .standard ? "sparkles" : "popcorn.circle.fill",
+                                    isSelected: selectedStatsMoodMode == mode
+                                )
+                                .onTapGesture {
+                                    statsMoodModeRawValue = mode.rawValue
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if selectedStatsMoodMode == .lulu {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsSectionTitle(text: "噜噜玩法")
+                        SettingsGlassCardSection {
+                            VStack(alignment: .leading, spacing: 14) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("随机更轻松，手动更可控。")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                                    ForEach(LuluMoodBehavior.allCases) { behavior in
+                                        StatsMoodOptionCard(
+                                            title: behavior.displayName,
+                                            subtitle: behavior.detailText,
+                                            icon: behavior == .random ? "shuffle" : "hand.tap.fill",
+                                            isSelected: selectedLuluMoodBehavior == behavior
+                                        )
+                                        .onTapGesture {
+                                            luluMoodBehaviorRawValue = behavior.rawValue
+                                        }
+                                    }
+                                }
+
+                                StatsMoodPreviewCard(
+                                    title: "默认表情",
+                                    subtitle: "未开盘、无数据或当天还没更新时，会显示这张默认 GIF。",
+                                    fileName: luluDefaultGIFName
+                                )
+                            }
+                        }
+                    }
+
+                    if selectedLuluMoodBehavior == .manual {
+                        VStack(alignment: .leading, spacing: 10) {
+                            SettingsSectionTitle(text: "盈利表情")
+                            SettingsGlassCardSection {
+                                StatsMoodAssetGrid(
+                                    items: LuluHappyAsset.allCases.map { ($0.displayName, $0.fileName, selectedHappyAsset == $0) },
+                                    subtitle: "用于正收益日期"
+                                ) { index in
+                                    luluHappyAssetRawValue = LuluHappyAsset.allCases[index].rawValue
+                                }
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            SettingsSectionTitle(text: "亏损表情")
+                            SettingsGlassCardSection {
+                                StatsMoodAssetGrid(
+                                    items: LuluBadAsset.allCases.map { ($0.displayName, $0.fileName, selectedBadAsset == $0) },
+                                    subtitle: "用于负收益日期"
+                                ) { index in
+                                    luluBadAssetRawValue = LuluBadAsset.allCases[index].rawValue
+                                }
+                            }
+                        }
+                    } else {
+                        SettingsGlassCardSection {
+                            HStack(spacing: 10) {
+                                Image(systemName: "dice.fill")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(settingsAccentColor)
+                                    .frame(width: 28, height: 28)
+                                    .background(settingsAccentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                Text("切换到不同日期时会重新随机：盈利只从 5 张 happy 中抽取，亏损只从 5 张 bad 中抽取。")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
+        }
+        .background(SettingsPageBackground())
+        .navigationTitle("统计表情")
+        .toolbar(.hidden, for: .tabBar)
+    }
+}
+
+private struct SettingsSectionTitle: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(settingsTitleColor.opacity(0.68))
+            .padding(.horizontal, 4)
+    }
+}
+
+private struct SettingsGlassCardSection<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(settingsGlassFill)
+                .background(
+                    .ultraThinMaterial,
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(settingsGlassStroke, lineWidth: 1)
+                }
+        )
+    }
+}
+
+private struct StatsMoodPreviewCard: View {
+    let title: String
+    let subtitle: String
+    let fileName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(settingsTitleColor)
+
+            StatsMoodGIFThumbnail(fileName: fileName, style: .hero)
+                .frame(maxWidth: .infinity)
+
+            Text(subtitle)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineSpacing(2)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(settingsGlassFill.opacity(0.68))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(settingsGlassStroke, lineWidth: 1)
+                }
+        )
+    }
+}
+
+private struct StatsMoodOptionCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isSelected ? settingsAccentColor : settingsTitleColor.opacity(0.78))
+                    .frame(width: 30, height: 30)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(isSelected ? settingsAccentColor.opacity(0.12) : settingsGlassFill.opacity(0.72))
+                    )
+                Spacer(minLength: 8)
+            }
+
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(settingsTitleColor)
+
+            Text(subtitle)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .minimumScaleFactor(0.92)
+
+            if isSelected {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(settingsAccentColor)
+                        .frame(width: 6, height: 6)
+                    Text("已选")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(settingsAccentColor)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(isSelected ? settingsAccentColor.opacity(0.08) : settingsGlassFill.opacity(0.72))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isSelected ? settingsAccentColor.opacity(0.42) : settingsGlassStroke, lineWidth: 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+private struct StatsMoodAssetGrid: View {
+    let items: [(title: String, fileName: String, isSelected: Bool)]
+    let subtitle: String
+    let onSelect: (Int) -> Void
+
+    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(subtitle)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: columns, spacing: 10) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    StatsMoodAssetCard(
+                        title: item.title,
+                        fileName: item.fileName,
+                        isSelected: item.isSelected
+                    )
+                    .onTapGesture {
+                        onSelect(index)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct StatsMoodAssetCard: View {
+    let title: String
+    let fileName: String
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ZStack(alignment: .topTrailing) {
+                StatsMoodGIFThumbnail(fileName: fileName, style: .picker)
+
+                if isSelected {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("已选")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .foregroundStyle(settingsAccentColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .stroke(settingsAccentColor.opacity(0.28), lineWidth: 1)
+                    }
+                    .padding(8)
+                }
+            }
+
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(settingsTitleColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
+                .padding(.horizontal, 2)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(isSelected ? settingsAccentColor.opacity(0.08) : settingsGlassFill.opacity(0.72))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(isSelected ? settingsAccentColor.opacity(0.42) : settingsGlassStroke, lineWidth: 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+private enum StatsMoodThumbnailStyle {
+    case hero
+    case picker
+}
+
+private struct StatsMoodGIFThumbnail: View {
+    let fileName: String
+    let style: StatsMoodThumbnailStyle
+
+    private var frameSize: CGSize {
+        switch style {
+        case .hero:
+            return CGSize(width: 156, height: 156)
+        case .picker:
+            return CGSize(width: 146, height: 118)
+        }
+    }
+
+    private var cornerRadius: CGFloat {
+        switch style {
+        case .hero:
+            return 22
+        case .picker:
+            return 16
+        }
+    }
+
+    private var innerPadding: CGFloat {
+        switch style {
+        case .hero:
+            return 10
+        case .picker:
+            return 8
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.94),
+                            settingsAccentColor.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: cornerRadius - 2, style: .continuous)
+                .fill(.ultraThinMaterial.opacity(0.72))
+
+            Group {
+                if let animatedImage = GIFImageLoader.animatedImage(named: fileName) {
+                    AnimatedGIFView(image: animatedImage)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Image(systemName: "photo")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(innerPadding)
+        }
+        .frame(width: frameSize.width, height: frameSize.height)
+        .overlay {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(settingsGlassStroke, lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .shadow(color: Color.black.opacity(0.04), radius: style == .hero ? 12 : 8, x: 0, y: 4)
     }
 }
 

@@ -11,7 +11,7 @@ import SwiftUI
 struct MYLiveRateApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AuthGateView()
         }
     }
 }

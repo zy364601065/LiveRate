@@ -5,12 +5,13 @@ struct ContentView: View {
     private enum MainTab: Hashable {
         case rates
         case holdings
-        case realtime
         case stats
         case settings
     }
 
     @StateObject private var viewModel = ExchangeRateViewModel()
+    @StateObject private var userProfileViewModel = UserProfileViewModel()
+    @StateObject private var statsMoodViewModel = StatsMoodViewModel()
     @State private var selectedTab: MainTab = .rates
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedHoldingPhotoItem: PhotosPickerItem?
@@ -39,16 +40,16 @@ struct ContentView: View {
                 HoldingsTabView(viewModel: viewModel, selectedHoldingPhotoItem: $selectedHoldingPhotoItem)
             }
 
-            Tab("实时", systemImage: "chart.line.uptrend.xyaxis", value: .realtime) {
-                LiveStockTabView(viewModel: viewModel)
-            }
-
             Tab("统计", systemImage: "calendar", value: .stats) {
-                StatsDashboardView(viewModel: viewModel)
+                StatsDashboardView(viewModel: viewModel, statsMoodViewModel: statsMoodViewModel)
             }
 
             Tab("设置", systemImage: "gearshape", value: .settings) {
-                SettingsTabView(viewModel: viewModel)
+                SettingsTabView(
+                    viewModel: viewModel,
+                    userProfileViewModel: userProfileViewModel,
+                    statsMoodViewModel: statsMoodViewModel
+                )
             }
         }
         .tint(tabAccentColor)
@@ -58,6 +59,9 @@ struct ContentView: View {
             selectedTab = mapToMainTab(configured)
         }
         .task {
+            await userProfileViewModel.loadOrCreateProfile()
+            await statsMoodViewModel.loadModes()
+            await viewModel.syncStatUploadRecords()
             await viewModel.refresh()
         }
         .onChange(of: selectedPhotoItem) {
@@ -91,8 +95,6 @@ struct ContentView: View {
             return .rates
         case .holdings:
             return .holdings
-        case .realtime:
-            return .realtime
         case .stats:
             return .stats
         }

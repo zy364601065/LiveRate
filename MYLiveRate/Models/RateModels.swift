@@ -100,7 +100,6 @@ enum AppTheme: String, CaseIterable, Identifiable {
 enum DefaultLandingTab: String, CaseIterable, Identifiable {
     case rates
     case holdings
-    case realtime
     case stats
 
     var id: String { rawValue }
@@ -109,7 +108,6 @@ enum DefaultLandingTab: String, CaseIterable, Identifiable {
         switch self {
         case .rates: return "汇率"
         case .holdings: return "持仓"
-        case .realtime: return "实时"
         case .stats: return "统计"
         }
     }

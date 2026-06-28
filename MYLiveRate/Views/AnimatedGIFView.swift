@@ -1,98 +1,89 @@
+import Kingfisher
 import SwiftUI
 import UIKit
-import ImageIO
 
-struct AnimatedGIFView: UIViewRepresentable {
-    let image: UIImage
-    var contentMode: UIView.ContentMode = .scaleAspectFit
+struct KingfisherGIFView: View {
+    let fileName: String
+    var contentMode: UIView.ContentMode = .scaleAspectFill
 
-    func makeUIView(context: Context) -> UIImageView {
-        let imageView = UIImageView()
-        imageView.backgroundColor = .clear
-        imageView.clipsToBounds = false
-        imageView.contentMode = contentMode
-        imageView.image = image
-        imageView.startAnimating()
-        return imageView
-    }
+    var body: some View {
+        Group {
+            if let fileURL = Bundle.main.gifResourceURL(named: fileName) {
+                let provider = LocalFileImageDataProvider(
+                    fileURL: fileURL,
+                    cacheKey: "bundle-gif-\(fileURL.lastPathComponent)"
+                )
 
-    func updateUIView(_ imageView: UIImageView, context: Context) {
-        imageView.contentMode = contentMode
-        if imageView.image !== image {
-            imageView.image = image
+                KFAnimatedImage(source: .provider(provider))
+                    .configure { imageView in
+                        imageView.backgroundColor = .clear
+                        imageView.clipsToBounds = true
+                        imageView.contentMode = contentMode
+                    }
+                    .cancelOnDisappear(true)
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
         }
-        if !imageView.isAnimating {
-            imageView.startAnimating()
-        }
+        .clipped()
     }
 }
 
-enum GIFImageLoader {
-    private static let cache = NSCache<NSString, UIImage>()
+struct KingfisherRemoteGIFView: View {
+    let url: URL?
+    var contentMode: UIView.ContentMode = .scaleAspectFill
 
-    static func animatedImage(named resourceName: String, in bundle: Bundle = .main) -> UIImage? {
-        if let cachedImage = cache.object(forKey: resourceName as NSString) {
-            return cachedImage
-        }
-
-        guard let fileURL = resourceURL(named: resourceName, in: bundle),
-              let imageSource = CGImageSourceCreateWithURL(fileURL as CFURL, nil) else {
-            return nil
-        }
-
-        let frameCount = CGImageSourceGetCount(imageSource)
-        guard frameCount > 0 else { return nil }
-
-        var frames: [UIImage] = []
-        var duration: TimeInterval = 0
-
-        for index in 0..<frameCount {
-            guard let frameImage = CGImageSourceCreateImageAtIndex(imageSource, index, nil) else {
-                continue
+    var body: some View {
+        Group {
+            if let url {
+                KFAnimatedImage(url)
+                    .configure { imageView in
+                        imageView.backgroundColor = .clear
+                        imageView.clipsToBounds = true
+                        imageView.contentMode = contentMode
+                    }
+                    .cancelOnDisappear(true)
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
-
-            frames.append(UIImage(cgImage: frameImage))
-            duration += frameDuration(at: index, source: imageSource)
         }
-
-        guard !frames.isEmpty else { return nil }
-
-        let totalDuration = max(duration, Double(frames.count) * 0.08)
-        let animatedImage = UIImage.animatedImage(with: frames, duration: totalDuration) ?? frames.first
-
-        guard let animatedImage else { return nil }
-        cache.setObject(animatedImage, forKey: resourceName as NSString)
-        return animatedImage
+        .clipped()
     }
+}
 
-    private static func resourceURL(named resourceName: String, in bundle: Bundle) -> URL? {
+private extension Bundle {
+    func gifResourceURL(named resourceName: String) -> URL? {
         let resourcePath = resourceName as NSString
         let fileName = resourcePath.lastPathComponent
         let baseName = resourcePath.deletingPathExtension
         let fileExtension = resourcePath.pathExtension
 
         if !fileExtension.isEmpty {
-            if let directURL = bundle.url(forResource: baseName, withExtension: fileExtension) {
+            if let directURL = url(forResource: baseName, withExtension: fileExtension) {
                 return directURL
             }
-            if let lowercasedURL = bundle.url(forResource: baseName, withExtension: fileExtension.lowercased()) {
+            if let lowercasedURL = url(forResource: baseName, withExtension: fileExtension.lowercased()) {
                 return lowercasedURL
             }
-            if let uppercasedURL = bundle.url(forResource: baseName, withExtension: fileExtension.uppercased()) {
+            if let uppercasedURL = url(forResource: baseName, withExtension: fileExtension.uppercased()) {
                 return uppercasedURL
             }
         }
 
         if fileExtension.isEmpty {
-            if let directURL = bundle.url(forResource: fileName, withExtension: nil) {
+            if let directURL = url(forResource: fileName, withExtension: nil) {
                 return directURL
             }
-            if let gifURL = bundle.url(forResource: fileName, withExtension: "gif") {
+            if let gifURL = url(forResource: fileName, withExtension: "gif") {
                 return gifURL
             }
         }
 
-        guard let rootURL = bundle.resourceURL,
+        guard let rootURL = resourceURL,
               let enumerator = FileManager.default.enumerator(
                 at: rootURL,
                 includingPropertiesForKeys: nil,
@@ -110,27 +101,5 @@ enum GIFImageLoader {
         }
 
         return nil
-    }
-
-    private static func frameDuration(at index: Int, source: CGImageSource) -> TimeInterval {
-        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
-              let gifProperties = properties[kCGImagePropertyGIFDictionary] as? [CFString: Any] else {
-            return 0.1
-        }
-
-        let unclampedDelay = doubleValue(gifProperties[kCGImagePropertyGIFUnclampedDelayTime])
-        let delay = doubleValue(gifProperties[kCGImagePropertyGIFDelayTime])
-        let frameDuration = unclampedDelay > 0 ? unclampedDelay : delay
-        return frameDuration < 0.02 ? 0.1 : frameDuration
-    }
-
-    private static func doubleValue(_ value: Any?) -> Double {
-        if let number = value as? NSNumber {
-            return number.doubleValue
-        }
-        if let doubleValue = value as? Double {
-            return doubleValue
-        }
-        return 0
     }
 }

@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6F3EE2B82FF16BF600E636A8 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 6F3EE2B72FF16BF600E636A8 /* Kingfisher */; };
 		A1B2C3D42FA34C3300CB972D /* Moya in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D52FA34C3300CB972D /* Moya */; };
+		B4A7D1E52FF036A100F715D2 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = B4A7D1E62FF036A100F715D2 /* Supabase */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,7 +29,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6F3EE2B82FF16BF600E636A8 /* Kingfisher in Frameworks */,
 				A1B2C3D42FA34C3300CB972D /* Moya in Frameworks */,
+				B4A7D1E52FF036A100F715D2 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +75,8 @@
 			name = MYLiveRate;
 			packageProductDependencies = (
 				A1B2C3D52FA34C3300CB972D /* Moya */,
+				B4A7D1E62FF036A100F715D2 /* Supabase */,
+				6F3EE2B72FF16BF600E636A8 /* Kingfisher */,
 			);
 			productName = MYLiveRate;
 			productReference = 1A37AC282FA34C3300CB972D /* MYLiveRate.app */;
@@ -88,6 +94,11 @@
 				TargetAttributes = {
 					1A37AC272FA34C3300CB972D = {
 						CreatedOnToolsVersion = 26.3;
+						SystemCapabilities = {
+							com.apple.SignInWithApple = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -102,6 +113,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				1A0709752FADA193000B16B7 /* XCRemoteSwiftPackageReference "Moya" */,
+				6F3EE2202FF025F200E636A8 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				6F3EE2B62FF16BF600E636A8 /* XCRemoteSwiftPackageReference "Kingfisher" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1A37AC292FA34C3300CB972D /* Products */;
@@ -260,9 +273,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MYLiveRate/MYLiveRate.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 4YCC4XHF4V;
+				DEVELOPMENT_TEAM = 4JH5449NHT;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "众安助手";
@@ -296,9 +310,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MYLiveRate/MYLiveRate.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 4YCC4XHF4V;
+				DEVELOPMENT_TEAM = 4JH5449NHT;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "众安助手";
@@ -359,13 +374,39 @@
 				minimumVersion = 15.0.3;
 			};
 		};
+		6F3EE2202FF025F200E636A8 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+		6F3EE2B62FF16BF600E636A8 /* XCRemoteSwiftPackageReference "Kingfisher" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/onevcat/Kingfisher";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.10.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		6F3EE2B72FF16BF600E636A8 /* Kingfisher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6F3EE2B62FF16BF600E636A8 /* XCRemoteSwiftPackageReference "Kingfisher" */;
+			productName = Kingfisher;
+		};
 		A1B2C3D52FA34C3300CB972D /* Moya */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 1A0709752FADA193000B16B7 /* XCRemoteSwiftPackageReference "Moya" */;
 			productName = Moya;
+		};
+		B4A7D1E62FF036A100F715D2 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6F3EE2202FF025F200E636A8 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

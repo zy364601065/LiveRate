@@ -6,67 +6,42 @@ private let defaultLandingTabStorageKey = "myliverate.default_landing_tab"
 
 private let settingsTitleColor = Color(uiColor: .label)
 private let settingsAccentColor = Color(red: 0.95, green: 0.52, blue: 0.16)
+private let settingsSurfaceColor = Color(uiColor: UIColor { trait in
+    trait.userInterfaceStyle == .dark
+        ? UIColor(red: 0.12, green: 0.12, blue: 0.13, alpha: 1)
+        : UIColor.white
+})
+private let settingsSecondarySurfaceColor = Color(uiColor: UIColor { trait in
+    trait.userInterfaceStyle == .dark
+        ? UIColor(red: 0.16, green: 0.16, blue: 0.17, alpha: 1)
+        : UIColor(red: 0.965, green: 0.965, blue: 0.95, alpha: 1)
+})
+private let settingsDividerColor = Color(uiColor: UIColor { trait in
+    trait.userInterfaceStyle == .dark
+        ? UIColor(white: 1, alpha: 0.09)
+        : UIColor(white: 0, alpha: 0.08)
+})
 private let settingsBackgroundTop = Color(uiColor: UIColor { trait in
     trait.userInterfaceStyle == .dark
-        ? UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
-        : UIColor(red: 0.995, green: 0.995, blue: 0.992, alpha: 1)
+        ? UIColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
+        : UIColor(red: 0.976, green: 0.974, blue: 0.958, alpha: 1)
 })
 private let settingsBackgroundBottom = Color(uiColor: UIColor { trait in
     trait.userInterfaceStyle == .dark
-        ? UIColor(red: 0.08, green: 0.08, blue: 0.09, alpha: 1)
-        : UIColor(red: 0.989, green: 0.989, blue: 0.982, alpha: 1)
+        ? UIColor(red: 0.05, green: 0.05, blue: 0.06, alpha: 1)
+        : UIColor(red: 0.944, green: 0.94, blue: 0.918, alpha: 1)
 })
-private let settingsGlassFill = Color(uiColor: UIColor { trait in
-    trait.userInterfaceStyle == .dark
-        ? UIColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 0.52)
-        : UIColor(white: 1, alpha: 0.20)
-})
-private let settingsGlassStroke = Color(uiColor: UIColor { trait in
-    trait.userInterfaceStyle == .dark
-        ? UIColor(white: 1, alpha: 0.12)
-        : UIColor(white: 1, alpha: 0.58)
-})
-
 private struct SettingsPageBackground: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    settingsBackgroundTop,
-                    settingsBackgroundBottom
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(Color(uiColor: .systemGray5).opacity(0.12))
-                .frame(width: 260, height: 260)
-                .blur(radius: 46)
-                .offset(x: -120, y: -320)
-
-            Circle()
-                .fill(settingsAccentColor.opacity(0.08))
-                .frame(width: 300, height: 300)
-                .blur(radius: 54)
-                .offset(x: 140, y: -250)
-        }
+        LinearGradient(
+            colors: [
+                settingsBackgroundTop,
+                settingsBackgroundBottom
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
         .ignoresSafeArea()
-    }
-}
-
-private struct SettingsGlassRowBackground: View {
-    var body: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(settingsGlassFill)
-            .background(
-                .ultraThinMaterial,
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(settingsGlassStroke, lineWidth: 1)
-            }
     }
 }
 
@@ -77,12 +52,12 @@ private struct SettingsEntryRow: View {
     let trailing: String?
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 13) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(settingsAccentColor)
-                .frame(width: 32, height: 32)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 36, height: 36)
+                .background(settingsAccentColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -97,124 +72,177 @@ private struct SettingsEntryRow: View {
 
             if let trailing {
                 Text(trailing)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(settingsAccentColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.thinMaterial, in: Capsule())
-            }
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-private struct SettingsTagChip: View {
-    let text: String
-    let isSelected: Bool
-
-    var body: some View {
-        HStack(spacing: 5) {
-            if isSelected {
-                Circle()
-                    .fill(settingsAccentColor)
-                    .frame(width: 5, height: 5)
-            }
-
-            Text(text)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(isSelected ? settingsTitleColor : settingsTitleColor.opacity(0.72))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-        }
-            .padding(.horizontal, isSelected ? 10 : 11)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? settingsAccentColor.opacity(0.09) : settingsGlassFill.opacity(0.70))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected ? settingsAccentColor.opacity(0.48) : settingsGlassStroke, lineWidth: 1)
-            }
-    }
-}
-
-private struct SettingsSubpageIntroCard: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(settingsAccentColor)
-                .frame(width: 30, height: 30)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(settingsTitleColor)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(settingsTitleColor.opacity(0.72))
-                    .lineSpacing(2)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-private struct SettingsSelectionRow: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let isSelected: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(settingsAccentColor)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(settingsTitleColor)
-                Text(subtitle)
-                    .font(.footnote)
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .frame(maxWidth: 118, alignment: .trailing)
             }
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(minHeight: 56)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct SettingsMenuGroup<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(spacing: 0) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
+            .background(settingsSurfaceColor, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(settingsDividerColor, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: Color.black.opacity(0.04), radius: 14, x: 0, y: 7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SettingsMenuDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(settingsDividerColor)
+            .frame(height: 1)
+            .padding(.leading, 49)
+    }
+}
+
+private struct SettingsAccountHeader: View {
+    @ObservedObject var profileViewModel: UserProfileViewModel
+
+    var body: some View {
+        NavigationLink {
+            UserProfileSettingsView(profileViewModel: profileViewModel)
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    settingsAccentColor,
+                                    Color(red: 0.98, green: 0.68, blue: 0.30)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Text(profileViewModel.displayNickname.prefix(1))
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 58, height: 58)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(profileViewModel.displayNickname)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(settingsTitleColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+
+                    Text("个人资料与账号 ID")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    if profileViewModel.isLoading {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("正在同步")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
+            .background(settingsSurfaceColor, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(settingsDividerColor, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: Color.black.opacity(0.05), radius: 18, x: 0, y: 8)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct SettingsCompactOptionRow: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(isSelected ? settingsAccentColor : settingsTitleColor.opacity(0.76))
+                .frame(width: 34, height: 34)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(isSelected ? settingsAccentColor.opacity(0.12) : settingsSecondarySurfaceColor)
+                )
+
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(settingsTitleColor)
 
             Spacer(minLength: 8)
 
             if isSelected {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(settingsAccentColor)
-                        .frame(width: 6, height: 6)
-                    Text("已选")
-                        .font(.caption2.weight(.semibold))
-                }
-                .foregroundStyle(settingsAccentColor)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(settingsAccentColor.opacity(0.10), in: Capsule())
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(settingsAccentColor)
             }
         }
-        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
 struct SettingsTabView: View {
     @ObservedObject var viewModel: ExchangeRateViewModel
+    @ObservedObject var userProfileViewModel: UserProfileViewModel
+    @ObservedObject var statsMoodViewModel: StatsMoodViewModel
     @AppStorage(appThemeStorageKey) private var appThemeRawValue: String = AppTheme.system.rawValue
     @AppStorage(defaultLandingTabStorageKey) private var defaultLandingTabRawValue: String = DefaultLandingTab.rates.rawValue
     @AppStorage(statsMoodModeStorageKey) private var statsMoodModeRawValue: String = StatsMoodMode.standard.rawValue
     @AppStorage(luluMoodBehaviorStorageKey) private var luluMoodBehaviorRawValue: String = LuluMoodBehavior.random.rawValue
+    @AppStorage(customStatsMoodModeIDStorageKey) private var customStatsMoodModeID: String = ""
 
     private var selectedTheme: AppTheme {
         AppTheme(rawValue: appThemeRawValue) ?? .system
@@ -238,82 +266,229 @@ struct SettingsTabView: View {
             return selectedStatsMoodMode.displayName
         case .lulu:
             return "\(selectedStatsMoodMode.displayName)·\(selectedLuluMoodBehavior.displayName)"
+        case .custom:
+            return statsMoodViewModel.mode(id: customStatsMoodModeID)?.name ?? "自定义"
         }
     }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("基础") {
-                    NavigationLink {
-                        GeneralSettingsView()
-                    } label: {
-                        SettingsEntryRow(
-                            icon: "slider.horizontal.3",
-                            title: "通用设置",
-                            subtitle: "主题、展示与趋势文案",
-                            trailing: selectedTheme.displayName
-                        )
-                    }
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 22) {
+                    SettingsAccountHeader(profileViewModel: userProfileViewModel)
 
-                    NavigationLink {
-                        StatsMoodSettingsView()
-                    } label: {
-                        SettingsEntryRow(
-                            icon: "face.smiling",
-                            title: "统计表情",
-                            subtitle: "噜噜随机、手动与默认表情",
-                            trailing: statsMoodTrailingText
-                        )
-                    }
+                    SettingsMenuGroup("偏好") {
+                        NavigationLink {
+                            GeneralSettingsView()
+                        } label: {
+                            SettingsEntryRow(
+                                icon: "slider.horizontal.3",
+                                title: "通用设置",
+                                subtitle: "主题、展示与趋势文案",
+                                trailing: selectedTheme.displayName
+                            )
+                        }
+                        .buttonStyle(.plain)
 
-                    NavigationLink {
-                        DefaultLandingTabSettingsView()
-                    } label: {
-                        SettingsEntryRow(
-                            icon: "rectangle.on.rectangle",
-                            title: "默认落地",
-                            subtitle: "应用启动时默认进入页面",
-                            trailing: selectedLanding.displayName
-                        )
-                    }
-                }
-                .listRowBackground(SettingsGlassRowBackground())
+                        SettingsMenuDivider()
 
-                Section("高级") {
+                        NavigationLink {
+                            StatsMoodSettingsView(statsMoodViewModel: statsMoodViewModel)
+                        } label: {
+                            SettingsEntryRow(
+                                icon: "face.smiling",
+                                title: "统计表情",
+                                subtitle: "噜噜随机、手动与默认表情",
+                                trailing: statsMoodTrailingText
+                            )
+                        }
+                        .buttonStyle(.plain)
 
-                    NavigationLink {
-                        APIKeySettingsView(viewModel: viewModel)
-                    } label: {
-                        SettingsEntryRow(
-                            icon: "key.fill",
-                            title: "接口密钥",
-                            subtitle: "Finnhub token 保存与校验",
-                            trailing: nil
-                        )
+                        SettingsMenuDivider()
+
+                        NavigationLink {
+                            DefaultLandingTabSettingsView()
+                        } label: {
+                            SettingsEntryRow(
+                                icon: "rectangle.on.rectangle",
+                                title: "默认落地",
+                                subtitle: "应用启动时默认进入页面",
+                                trailing: selectedLanding.displayName
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
 
 #if DEBUG
-                    NavigationLink {
-                        DebugLabSettingsView()
-                    } label: {
-                        SettingsEntryRow(
-                            icon: "flask.fill",
-                            title: "实验室",
-                            subtitle: "趋势提示测试场景",
-                            trailing: nil
-                        )
+                    SettingsMenuGroup("高级") {
+                        NavigationLink {
+                            DebugLabSettingsView()
+                        } label: {
+                            SettingsEntryRow(
+                                icon: "flask.fill",
+                                title: "实验室",
+                                subtitle: "趋势提示测试场景",
+                                trailing: nil
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
 #endif
                 }
-                .listRowBackground(SettingsGlassRowBackground())
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 28)
             }
-            .scrollContentBackground(.hidden)
             .background(SettingsPageBackground())
-            .listStyle(.insetGrouped)
-            .listRowSpacing(8)
             .navigationTitle("设置")
         }
+    }
+}
+
+private struct UserProfileSettingsView: View {
+    @ObservedObject var profileViewModel: UserProfileViewModel
+    @State private var draftNickname = ""
+    @State private var hasSeededDraft = false
+
+    private var trimmedNickname: String {
+        draftNickname.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSave: Bool {
+        UserProfileViewModel.isValidNickname(trimmedNickname)
+            && trimmedNickname != (profileViewModel.nickname ?? "")
+            && !profileViewModel.isSaving
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                SettingsMenuGroup("昵称") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label {
+                            Text("显示昵称")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(settingsTitleColor)
+                        } icon: {
+                            Image(systemName: "pencil.line")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(settingsAccentColor)
+                        }
+                        .labelStyle(.titleAndIcon)
+
+                        TextField("众安_4839201", text: $draftNickname)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.body)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 48)
+                            .background(settingsSecondarySurfaceColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(settingsDividerColor, lineWidth: 1)
+                                .allowsHitTesting(false)
+                        }
+                            .accessibilityLabel("昵称")
+                            .accessibilityHint("输入 1 到 24 个字符的昵称")
+
+                        if let errorMessage = profileViewModel.errorMessage {
+                            Text(errorMessage)
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.red)
+                                .accessibilityLabel("错误：\(errorMessage)")
+                        }
+
+                        Button {
+                            Task {
+                                await profileViewModel.updateNickname(draftNickname)
+                                seedDraft(force: true)
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if profileViewModel.isSaving {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                Text(profileViewModel.isSaving ? "保存中" : "保存昵称")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(settingsAccentColor)
+                        .disabled(!canSave)
+                        .accessibilityHint(canSave ? "保存当前昵称" : "昵称未变化或格式不正确")
+                    }
+                    .padding(.vertical, 8)
+                }
+
+                SettingsMenuGroup("账号") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label {
+                            Text("Supabase 用户 ID")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(settingsTitleColor)
+                        } icon: {
+                            Image(systemName: "key.horizontal.fill")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(settingsAccentColor)
+                        }
+                        .labelStyle(.titleAndIcon)
+
+                        Text(profileViewModel.userIDText)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(3)
+                            .minimumScaleFactor(0.82)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(settingsSecondarySurfaceColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        if profileViewModel.isLoading {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("正在同步个人信息")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if profileViewModel.canRetry {
+                            Button {
+                                Task {
+                                    await profileViewModel.loadOrCreateProfile()
+                                    seedDraft(force: true)
+                                }
+                            } label: {
+                                Label("重新同步", systemImage: "arrow.clockwise")
+                                    .frame(minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(settingsAccentColor)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
+        }
+        .background(SettingsPageBackground())
+        .navigationTitle("个人信息")
+        .toolbar(.hidden, for: .tabBar)
+        .onAppear {
+            seedDraft()
+        }
+        .onChange(of: profileViewModel.nickname) {
+            seedDraft(force: !hasSeededDraft)
+        }
+    }
+
+    private func seedDraft(force: Bool = false) {
+        guard force || !hasSeededDraft else { return }
+        draftNickname = profileViewModel.nickname ?? ""
+        hasSeededDraft = true
     }
 }
 
@@ -324,42 +499,37 @@ private struct DefaultLandingTabSettingsView: View {
         switch tab {
         case .rates: return "dollarsign.arrow.trianglehead.counterclockwise.rotate.90"
         case .holdings: return "briefcase.fill"
-        case .realtime: return "dot.radiowaves.left.and.right"
         case .stats: return "chart.bar.fill"
         }
     }
 
     var body: some View {
-        List {
-            Section {
-                SettingsSubpageIntroCard(
-                    title: "默认落地",
-                    subtitle: "应用启动后自动进入你最常用的页面。",
-                    icon: "rectangle.on.rectangle.angled"
-                )
-            }
-            .listRowBackground(SettingsGlassRowBackground())
-            .listRowSeparator(.hidden)
+        ScrollView(showsIndicators: false) {
+            SettingsMenuGroup("启动页面") {
+                VStack(spacing: 0) {
+                    ForEach(Array(DefaultLandingTab.allCases.enumerated()), id: \.element.id) { index, tab in
+                        Button {
+                            selectedTabRawValue = tab.rawValue
+                        } label: {
+                            SettingsCompactOptionRow(
+                                title: tab.displayName,
+                                icon: icon(for: tab),
+                                isSelected: selectedTabRawValue == tab.rawValue
+                            )
+                        }
+                        .foregroundStyle(.primary)
+                        .buttonStyle(.plain)
 
-            Section("启动页面") {
-                ForEach(DefaultLandingTab.allCases) { tab in
-                    Button {
-                        selectedTabRawValue = tab.rawValue
-                    } label: {
-                        SettingsSelectionRow(
-                            title: tab.displayName,
-                            subtitle: "设为打开应用后的默认页面",
-                            icon: icon(for: tab),
-                            isSelected: selectedTabRawValue == tab.rawValue
-                        )
+                        if index < DefaultLandingTab.allCases.count - 1 {
+                            SettingsMenuDivider()
+                        }
                     }
-                    .foregroundStyle(.primary)
-                    .buttonStyle(.plain)
                 }
             }
-            .listRowBackground(SettingsGlassRowBackground())
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
         }
-        .scrollContentBackground(.hidden)
         .background(SettingsPageBackground())
         .navigationTitle("默认落地")
         .toolbar(.hidden, for: .tabBar)
@@ -370,7 +540,6 @@ private struct GeneralSettingsView: View {
     @AppStorage(appThemeStorageKey) private var appThemeRawValue: String = AppTheme.system.rawValue
     @AppStorage(showAllExchangeRatesStorageKey) private var showAllExchangeRates = false
     @AppStorage(trendHintToneStorageKey) private var trendHintToneRawValue: String = TrendHintTone.wild.rawValue
-    @State private var isHintToneDialogPresented = false
 
     private var selectedTheme: AppTheme {
         AppTheme(rawValue: appThemeRawValue) ?? .system
@@ -381,144 +550,96 @@ private struct GeneralSettingsView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("通用设置")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(settingsTitleColor)
-                    Text("调整主题外观、汇率展示范围与统计提示。")
-                        .font(.subheadline)
-                        .foregroundStyle(settingsTitleColor.opacity(0.72))
-                        .lineSpacing(2)
-                }
-                .padding(.vertical, 4)
-            }
-            .listRowBackground(SettingsGlassRowBackground())
-            .listRowSeparator(.hidden)
-
-            Section("外观") {
-                VStack(alignment: .leading, spacing: 11) {
-                    Label {
-                        Text("主题模式")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(settingsTitleColor)
-                    } icon: {
-                        Image(systemName: "sparkles")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(settingsAccentColor)
-                    }
-                    .labelStyle(.titleAndIcon)
-
-                    Text("建议根据环境光线选择，视觉会更舒适。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 8) {
-                        ForEach(AppTheme.allCases) { theme in
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                SettingsMenuGroup("外观") {
+                    VStack(spacing: 0) {
+                        ForEach(Array(AppTheme.allCases.enumerated()), id: \.element.id) { index, theme in
                             Button {
                                 appThemeRawValue = theme.rawValue
                             } label: {
-                                SettingsTagChip(text: theme.displayName, isSelected: selectedTheme == theme)
-                                    .frame(maxWidth: .infinity)
+                                SettingsCompactOptionRow(
+                                    title: theme.displayName,
+                                    icon: themeIcon(for: theme),
+                                    isSelected: selectedTheme == theme
+                                )
                             }
                             .buttonStyle(.plain)
+
+                            if index < AppTheme.allCases.count - 1 {
+                                SettingsMenuDivider()
+                            }
                         }
                     }
                 }
-                .padding(.vertical, 2)
-            }
-            .listRowBackground(SettingsGlassRowBackground())
 
-            Section("汇率展示") {
-                VStack(alignment: .leading, spacing: 10) {
+                SettingsMenuGroup("汇率展示") {
                     Toggle(isOn: $showAllExchangeRates) {
                         Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("显示其他汇率")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(settingsTitleColor)
-                                Text("在汇率页追加更多币种卡片")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text("显示其他汇率")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(settingsTitleColor)
                         } icon: {
                             Image(systemName: "chart.line.uptrend.xyaxis")
-                                .font(.footnote.weight(.semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(settingsAccentColor)
+                                .frame(width: 34, height: 34)
+                                .background(settingsAccentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                     }
                     .toggleStyle(.switch)
-
-                    Text("关闭时只展示核心币种，界面更聚焦。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    .frame(minHeight: 52)
                 }
-                .padding(.vertical, 2)
-            }
-            .listRowBackground(SettingsGlassRowBackground())
 
-            Section("统计提示") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Button {
-                        isHintToneDialogPresented = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "waveform.path.ecg")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(settingsAccentColor)
-
-                            Text("趋势文案模式")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(settingsTitleColor)
-
-                            Spacer()
-
-                            SettingsTagChip(text: selectedHintTone.displayName, isSelected: true)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    HStack(spacing: 8) {
-                        ForEach(TrendHintTone.allCases) { tone in
+                SettingsMenuGroup("统计提示") {
+                    VStack(spacing: 0) {
+                        ForEach(Array(TrendHintTone.allCases.enumerated()), id: \.element.id) { index, tone in
                             Button {
                                 trendHintToneRawValue = tone.rawValue
                             } label: {
-                                SettingsTagChip(text: tone.displayName, isSelected: selectedHintTone == tone)
-                                    .frame(maxWidth: .infinity)
+                                SettingsCompactOptionRow(
+                                    title: tone.displayName,
+                                    icon: "waveform.path.ecg",
+                                    isSelected: selectedHintTone == tone
+                                )
                             }
                             .buttonStyle(.plain)
+
+                            if index < TrendHintTone.allCases.count - 1 {
+                                SettingsMenuDivider()
+                            }
                         }
                     }
-
-                    Text("默认模式：狂野。也可点击“趋势文案模式”弹窗选择。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 2)
             }
-            .listRowBackground(SettingsGlassRowBackground())
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
         }
-        .scrollContentBackground(.hidden)
         .background(SettingsPageBackground())
         .navigationTitle("通用设置")
         .toolbar(.hidden, for: .tabBar)
-        .confirmationDialog("选择趋势文案模式", isPresented: $isHintToneDialogPresented, titleVisibility: .visible) {
-            ForEach(TrendHintTone.allCases) { tone in
-                Button(tone.displayName) {
-                    trendHintToneRawValue = tone.rawValue
-                }
-            }
-            Button("取消", role: .cancel) {}
+    }
+
+    private func themeIcon(for theme: AppTheme) -> String {
+        switch theme {
+        case .system:
+            return "circle.lefthalf.filled"
+        case .light:
+            return "sun.max.fill"
+        case .dark:
+            return "moon.fill"
         }
     }
 }
 
 private struct StatsMoodSettingsView: View {
+    @ObservedObject var statsMoodViewModel: StatsMoodViewModel
     @AppStorage(statsMoodModeStorageKey) private var statsMoodModeRawValue: String = StatsMoodMode.standard.rawValue
     @AppStorage(luluMoodBehaviorStorageKey) private var luluMoodBehaviorRawValue: String = LuluMoodBehavior.random.rawValue
     @AppStorage(luluHappyAssetStorageKey) private var luluHappyAssetRawValue: String = LuluHappyAsset.happy1.rawValue
     @AppStorage(luluBadAssetStorageKey) private var luluBadAssetRawValue: String = LuluBadAsset.bad1.rawValue
+    @AppStorage(customStatsMoodModeIDStorageKey) private var customStatsMoodModeID: String = ""
 
     private var selectedStatsMoodMode: StatsMoodMode {
         StatsMoodMode(rawValue: statsMoodModeRawValue) ?? .standard
@@ -536,110 +657,128 @@ private struct StatsMoodSettingsView: View {
         LuluBadAsset(rawValue: luluBadAssetRawValue) ?? .bad1
     }
 
+    private var luluMoodBehaviorBinding: Binding<LuluMoodBehavior> {
+        Binding {
+            selectedLuluMoodBehavior
+        } set: { newValue in
+            withAnimation(.easeInOut(duration: 0.18)) {
+                luluMoodBehaviorRawValue = newValue.rawValue
+            }
+        }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
-                SettingsGlassCardSection {
-                    SettingsSubpageIntroCard(
-                        title: "统计表情",
-                        subtitle: "设置统计页日历底图的表情风格。默认是原生绘制表情；噜噜支持随机和手动 GIF。",
-                        icon: "face.smiling"
-                    )
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    SettingsSectionTitle(text: "表情模式")
-                    SettingsGlassCardSection {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                            ForEach(StatsMoodMode.allCases) { mode in
-                                StatsMoodOptionCard(
+                SettingsMenuGroup("表情模式") {
+                    VStack(spacing: 0) {
+                        let builtInModes: [StatsMoodMode] = [.standard, .lulu]
+                        ForEach(Array(builtInModes.enumerated()), id: \.element.id) { index, mode in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    statsMoodModeRawValue = mode.rawValue
+                                }
+                            } label: {
+                                SettingsCompactOptionRow(
                                     title: mode.displayName,
-                                    subtitle: mode.detailText,
                                     icon: mode == .standard ? "sparkles" : "popcorn.circle.fill",
                                     isSelected: selectedStatsMoodMode == mode
                                 )
-                                .onTapGesture {
-                                    statsMoodModeRawValue = mode.rawValue
+                            }
+                            .buttonStyle(.plain)
+
+                            if index < builtInModes.count - 1 {
+                                SettingsMenuDivider()
+                            }
+                        }
+                    }
+                }
+
+                if !statsMoodViewModel.customModes.isEmpty {
+                    SettingsMenuGroup("后台模式") {
+                        VStack(spacing: 0) {
+                            ForEach(Array(statsMoodViewModel.customModes.enumerated()), id: \.element.id) { index, mode in
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.18)) {
+                                        customStatsMoodModeID = mode.id.uuidString
+                                        statsMoodModeRawValue = StatsMoodMode.custom.rawValue
+                                    }
+                                } label: {
+                                    SettingsCompactOptionRow(
+                                        title: mode.name,
+                                        icon: mode.scope == "global" ? "globe.asia.australia.fill" : "person.crop.circle.fill.badge.checkmark",
+                                        isSelected: selectedStatsMoodMode == .custom && customStatsMoodModeID == mode.id.uuidString
+                                    )
+                                }
+                                .buttonStyle(.plain)
+
+                                if index < statsMoodViewModel.customModes.count - 1 {
+                                    SettingsMenuDivider()
                                 }
                             }
                         }
+                    }
+                }
+
+                if statsMoodViewModel.isLoading {
+                    SettingsMenuGroup("同步状态") {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("正在同步后台表情模式")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                } else if let errorMessage = statsMoodViewModel.errorMessage {
+                    SettingsMenuGroup("同步状态") {
+                        Text(errorMessage)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
                 }
 
                 if selectedStatsMoodMode == .lulu {
-                    VStack(alignment: .leading, spacing: 10) {
-                        SettingsSectionTitle(text: "噜噜玩法")
-                        SettingsGlassCardSection {
-                            VStack(alignment: .leading, spacing: 14) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("随机更轻松，手动更可控。")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                                    ForEach(LuluMoodBehavior.allCases) { behavior in
-                                        StatsMoodOptionCard(
-                                            title: behavior.displayName,
-                                            subtitle: behavior.detailText,
-                                            icon: behavior == .random ? "shuffle" : "hand.tap.fill",
-                                            isSelected: selectedLuluMoodBehavior == behavior
-                                        )
-                                        .onTapGesture {
-                                            luluMoodBehaviorRawValue = behavior.rawValue
-                                        }
-                                    }
-                                }
-
-                                StatsMoodPreviewCard(
-                                    title: "默认表情",
-                                    subtitle: "未开盘、无数据或当天还没更新时，会显示这张默认 GIF。",
-                                    fileName: luluDefaultGIFName
-                                )
+                    SettingsMenuGroup("噜噜玩法") {
+                        Picker("噜噜玩法", selection: luluMoodBehaviorBinding) {
+                            ForEach(LuluMoodBehavior.allCases) { behavior in
+                                Text(behavior.displayName)
+                                    .tag(behavior)
                             }
                         }
+                        .pickerStyle(.segmented)
+                        .tint(settingsAccentColor)
+                        .padding(.vertical, 8)
+                    }
+
+                    SettingsMenuGroup("默认表情") {
+                        StatsMoodPreviewCard(
+                            title: "默认表情",
+                            fileName: luluDefaultGIFName
+                        )
                     }
 
                     if selectedLuluMoodBehavior == .manual {
-                        VStack(alignment: .leading, spacing: 10) {
-                            SettingsSectionTitle(text: "盈利表情")
-                            SettingsGlassCardSection {
-                                StatsMoodAssetGrid(
-                                    items: LuluHappyAsset.allCases.map { ($0.displayName, $0.fileName, selectedHappyAsset == $0) },
-                                    subtitle: "用于正收益日期"
-                                ) { index in
-                                    luluHappyAssetRawValue = LuluHappyAsset.allCases[index].rawValue
-                                }
+                        SettingsMenuGroup("盈利表情") {
+                            StatsMoodAssetGrid(
+                                items: LuluHappyAsset.allCases.map { ($0.displayName, $0.fileName, selectedHappyAsset == $0) }
+                            ) { index in
+                                luluHappyAssetRawValue = LuluHappyAsset.allCases[index].rawValue
                             }
                         }
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            SettingsSectionTitle(text: "亏损表情")
-                            SettingsGlassCardSection {
-                                StatsMoodAssetGrid(
-                                    items: LuluBadAsset.allCases.map { ($0.displayName, $0.fileName, selectedBadAsset == $0) },
-                                    subtitle: "用于负收益日期"
-                                ) { index in
-                                    luluBadAssetRawValue = LuluBadAsset.allCases[index].rawValue
-                                }
+                        SettingsMenuGroup("亏损表情") {
+                            StatsMoodAssetGrid(
+                                items: LuluBadAsset.allCases.map { ($0.displayName, $0.fileName, selectedBadAsset == $0) }
+                            ) { index in
+                                luluBadAssetRawValue = LuluBadAsset.allCases[index].rawValue
                             }
-                        }
-                    } else {
-                        SettingsGlassCardSection {
-                            HStack(spacing: 10) {
-                                Image(systemName: "dice.fill")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(settingsAccentColor)
-                                    .frame(width: 28, height: 28)
-                                    .background(settingsAccentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                Text("切换到不同日期时会重新随机：盈利只从 5 张 happy 中抽取，亏损只从 5 张 bad 中抽取。")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 6)
                         }
                     }
                 }
+
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -648,50 +787,14 @@ private struct StatsMoodSettingsView: View {
         .background(SettingsPageBackground())
         .navigationTitle("统计表情")
         .toolbar(.hidden, for: .tabBar)
-    }
-}
-
-private struct SettingsSectionTitle: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(settingsTitleColor.opacity(0.68))
-            .padding(.horizontal, 4)
-    }
-}
-
-private struct SettingsGlassCardSection<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            content
+        .task {
+            await statsMoodViewModel.loadModes()
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(settingsGlassFill)
-                .background(
-                    .ultraThinMaterial,
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(settingsGlassStroke, lineWidth: 1)
-                }
-        )
     }
 }
 
 private struct StatsMoodPreviewCard: View {
     let title: String
-    let subtitle: String
     let fileName: String
 
     var body: some View {
@@ -702,107 +805,35 @@ private struct StatsMoodPreviewCard: View {
 
             StatsMoodGIFThumbnail(fileName: fileName, style: .hero)
                 .frame(maxWidth: .infinity)
-
-            Text(subtitle)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineSpacing(2)
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(settingsGlassFill.opacity(0.68))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(settingsGlassStroke, lineWidth: 1)
-                }
-        )
-    }
-}
-
-private struct StatsMoodOptionCard: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let isSelected: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isSelected ? settingsAccentColor : settingsTitleColor.opacity(0.78))
-                    .frame(width: 30, height: 30)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(isSelected ? settingsAccentColor.opacity(0.12) : settingsGlassFill.opacity(0.72))
-                    )
-                Spacer(minLength: 8)
-            }
-
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(settingsTitleColor)
-
-            Text(subtitle)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .minimumScaleFactor(0.92)
-
-            if isSelected {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(settingsAccentColor)
-                        .frame(width: 6, height: 6)
-                    Text("已选")
-                        .font(.caption2.weight(.semibold))
-                }
-                .foregroundStyle(settingsAccentColor)
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(isSelected ? settingsAccentColor.opacity(0.08) : settingsGlassFill.opacity(0.72))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(isSelected ? settingsAccentColor.opacity(0.42) : settingsGlassStroke, lineWidth: 1)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityAddTraits(.isButton)
+        .padding(.vertical, 8)
     }
 }
 
 private struct StatsMoodAssetGrid: View {
     let items: [(title: String, fileName: String, isSelected: Bool)]
-    let subtitle: String
     let onSelect: (Int) -> Void
 
     private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(subtitle)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    StatsMoodAssetCard(
-                        title: item.title,
-                        fileName: item.fileName,
-                        isSelected: item.isSelected
-                    )
-                    .onTapGesture {
+                    Button {
                         onSelect(index)
+                    } label: {
+                        StatsMoodAssetCard(
+                            title: item.title,
+                            fileName: item.fileName,
+                            isSelected: item.isSelected
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
 }
 
@@ -845,11 +876,12 @@ private struct StatsMoodAssetCard: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(isSelected ? settingsAccentColor.opacity(0.08) : settingsGlassFill.opacity(0.72))
+                .fill(isSelected ? settingsAccentColor.opacity(0.08) : settingsSecondarySurfaceColor)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isSelected ? settingsAccentColor.opacity(0.42) : settingsGlassStroke, lineWidth: 1)
+                .stroke(isSelected ? settingsAccentColor.opacity(0.42) : settingsDividerColor, lineWidth: 1)
+                .allowsHitTesting(false)
         }
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .accessibilityAddTraits(.isButton)
@@ -883,15 +915,6 @@ private struct StatsMoodGIFThumbnail: View {
         }
     }
 
-    private var innerPadding: CGFloat {
-        switch style {
-        case .hero:
-            return 10
-        case .picker:
-            return 8
-        }
-    }
-
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -909,168 +932,23 @@ private struct StatsMoodGIFThumbnail: View {
             RoundedRectangle(cornerRadius: cornerRadius - 2, style: .continuous)
                 .fill(.ultraThinMaterial.opacity(0.72))
 
-            Group {
-                if let animatedImage = GIFImageLoader.animatedImage(named: fileName) {
-                    AnimatedGIFView(image: animatedImage)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    Image(systemName: "photo")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(innerPadding)
+            KingfisherGIFView(fileName: fileName)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: frameSize.width, height: frameSize.height)
         .overlay {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(settingsGlassStroke, lineWidth: 1)
+                .stroke(settingsDividerColor, lineWidth: 1)
+                .allowsHitTesting(false)
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .shadow(color: Color.black.opacity(0.04), radius: style == .hero ? 12 : 8, x: 0, y: 4)
     }
 }
 
-private struct APIKeySettingsView: View {
-    @ObservedObject var viewModel: ExchangeRateViewModel
-    @State private var hasRefreshedSuccessfully = false
-    @State private var refreshSuccessMessage: String?
-    @State private var refreshFailureMessage: String?
-
-    private var finnhubKeyBinding: Binding<String> {
-        Binding(
-            get: { viewModel.finnhubAPIKey },
-            set: { viewModel.updateFinnhubAPIKey($0) }
-        )
-    }
-
-    private func saveTokenWithFeedback() {
-        let trimmed = viewModel.finnhubAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            hasRefreshedSuccessfully = false
-            refreshSuccessMessage = nil
-            refreshFailureMessage = "接口密钥不能为空"
-            return
-        }
-
-        viewModel.updateFinnhubAPIKey(trimmed)
-        Task {
-            let validationError = await viewModel.validateFinnhubTokenWithDefaultSymbol()
-            if let validationError {
-                hasRefreshedSuccessfully = false
-                refreshSuccessMessage = nil
-                refreshFailureMessage = validationError
-            } else {
-                hasRefreshedSuccessfully = true
-                refreshSuccessMessage = "token 有效（AAPL 校验通过）"
-                refreshFailureMessage = nil
-            }
-        }
-    }
-
-    var body: some View {
-        List {
-            Section {
-                SettingsSubpageIntroCard(
-                    title: "接口密钥",
-                    subtitle: "填写并校验 Finnhub Token，保证实时数据更新稳定。",
-                    icon: "key.fill"
-                )
-            }
-            .listRowBackground(SettingsGlassRowBackground())
-            .listRowSeparator(.hidden)
-
-            Section("Token 设置") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Label {
-                        Text("Finnhub Token")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(settingsTitleColor)
-                    } icon: {
-                        Image(systemName: "lock.shield")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(settingsAccentColor)
-                    }
-
-                    TextField("请输入 Finnhub 接口密钥", text: finnhubKeyBinding)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                        .submitLabel(.done)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(settingsGlassStroke, lineWidth: 1)
-                        }
-                        .onSubmit {
-                            saveTokenWithFeedback()
-                        }
-
-                    if !hasRefreshedSuccessfully {
-                        Button {
-                            saveTokenWithFeedback()
-                        } label: {
-                            HStack(spacing: 8) {
-                                if viewModel.isLoading {
-                                    ProgressView()
-                                        .progressViewStyle(.circular)
-                                        .tint(settingsAccentColor)
-                                } else {
-                                    Image(systemName: "checkmark.shield")
-                                        .font(.footnote.weight(.semibold))
-                                }
-                                Text(viewModel.isLoading ? "校验中..." : "保存并校验")
-                                    .font(.subheadline.weight(.semibold))
-                            }
-                            .foregroundStyle(settingsTitleColor)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(settingsAccentColor.opacity(0.16))
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(viewModel.isLoading)
-                    }
-
-                if let refreshSuccessMessage {
-                    Text(refreshSuccessMessage)
-                        .font(.footnote)
-                        .foregroundStyle(Color(red: 0.12, green: 0.72, blue: 0.67))
-                }
-
-                if let refreshFailureMessage {
-                    Text(refreshFailureMessage)
-                        .font(.footnote)
-                        .foregroundStyle(Color(red: 0.93, green: 0.19, blue: 0.23))
-                }
-
-                    Text("Token 不会上传到第三方服务，仅用于本地请求行情。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 2)
-            }
-            .listRowBackground(SettingsGlassRowBackground())
-        }
-        .scrollContentBackground(.hidden)
-        .background(SettingsPageBackground())
-        .navigationTitle("接口密钥")
-        .toolbar(.hidden, for: .tabBar)
-        .onChange(of: viewModel.finnhubAPIKey) { _, _ in
-            hasRefreshedSuccessfully = false
-            refreshSuccessMessage = nil
-            refreshFailureMessage = nil
-        }
-    }
-}
-
 #if DEBUG
 private struct DebugLabSettingsView: View {
     @AppStorage(trendHintLabScenarioStorageKey) private var trendHintLabScenarioRawValue: String = TrendHintLabScenario.none.rawValue
-    @State private var isScenarioDialogPresented = false
 
     private var selectedScenario: TrendHintLabScenario {
         TrendHintLabScenario(rawValue: trendHintLabScenarioRawValue) ?? .none
@@ -1081,85 +959,34 @@ private struct DebugLabSettingsView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                SettingsSubpageIntroCard(
-                    title: "实验室",
-                    subtitle: "仅用于调试统计趋势文案，不会修改真实业务记录。",
-                    icon: "flask.fill"
-                )
-            }
-            .listRowBackground(SettingsGlassRowBackground())
-            .listRowSeparator(.hidden)
+        ScrollView(showsIndicators: false) {
+            SettingsMenuGroup("趋势测试场景") {
+                VStack(spacing: 0) {
+                    ForEach(Array(quickScenarios.enumerated()), id: \.element.id) { index, scenario in
+                        Button {
+                            trendHintLabScenarioRawValue = scenario.rawValue
+                        } label: {
+                            SettingsCompactOptionRow(
+                                title: scenario.displayName,
+                                icon: "waveform.path.badge.plus",
+                                isSelected: selectedScenario == scenario
+                            )
+                        }
+                        .buttonStyle(.plain)
 
-            Section("趋势测试场景") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Button {
-                        isScenarioDialogPresented = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "waveform.path.badge.plus")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(settingsAccentColor)
-
-                            Text("场景选择")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(settingsTitleColor)
-
-                            Spacer()
-
-                            SettingsTagChip(text: selectedScenario.displayName, isSelected: true)
+                        if index < quickScenarios.count - 1 {
+                            SettingsMenuDivider()
                         }
                     }
-                    .buttonStyle(.plain)
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
-                        ForEach(quickScenarios) { scenario in
-                            Button {
-                                trendHintLabScenarioRawValue = scenario.rawValue
-                            } label: {
-                                SettingsTagChip(
-                                    text: scenario.displayName,
-                                    isSelected: selectedScenario == scenario
-                                )
-                                .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    Text("需要更快切换时可直接点上方标签。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 2)
             }
-            .listRowBackground(SettingsGlassRowBackground())
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
         }
-        .scrollContentBackground(.hidden)
         .background(SettingsPageBackground())
         .navigationTitle("实验室")
         .toolbar(.hidden, for: .tabBar)
-        .confirmationDialog("选择测试场景", isPresented: $isScenarioDialogPresented, titleVisibility: .visible) {
-            Button(TrendHintLabScenario.profitStreak4.displayName) {
-                trendHintLabScenarioRawValue = TrendHintLabScenario.profitStreak4.rawValue
-            }
-            Button(TrendHintLabScenario.lossStreak4.displayName) {
-                trendHintLabScenarioRawValue = TrendHintLabScenario.lossStreak4.rawValue
-            }
-            Button(TrendHintLabScenario.shortStreak3.displayName) {
-                trendHintLabScenarioRawValue = TrendHintLabScenario.shortStreak3.rawValue
-            }
-            Button(TrendHintLabScenario.latestZero.displayName) {
-                trendHintLabScenarioRawValue = TrendHintLabScenario.latestZero.rawValue
-            }
-            Button("恢复真实数据") {
-                trendHintLabScenarioRawValue = TrendHintLabScenario.none.rawValue
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("仅影响统计页的连续趋势提示文案，不会写入真实业务数据。")
-        }
     }
 }
 #endif

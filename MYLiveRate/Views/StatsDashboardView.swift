@@ -66,6 +66,7 @@ struct StatsDashboardView: View {
     private enum CalendarMoodPresentation: Equatable {
         case standard(KeyStatMood)
         case lulu(LuluCalendarMood)
+        case custom(LuluCalendarMood)
     }
 
     private struct KeyStatItem {
@@ -91,6 +92,7 @@ struct StatsDashboardView: View {
     }
 
     @ObservedObject var viewModel: ExchangeRateViewModel
+    @ObservedObject var statsMoodViewModel: StatsMoodViewModel
     @State private var selectedDay = Date()
     @State private var trendPeriod: TrendPeriod = .daily
     @State private var trendChartStyle: TrendChartStyle = .bar
@@ -107,11 +109,13 @@ struct StatsDashboardView: View {
     @State private var isCurrencyPickerPresented = false
     @State private var displayedConsecutiveTrendHint: ConsecutiveTrendHint?
     @State private var randomizedLuluAssetFileName: String?
+    @State private var randomizedCustomAssetID: UUID?
     @AppStorage(trendHintToneStorageKey) private var trendHintToneRawValue: String = TrendHintTone.wild.rawValue
     @AppStorage(statsMoodModeStorageKey) private var statsMoodModeRawValue: String = StatsMoodMode.standard.rawValue
     @AppStorage(luluMoodBehaviorStorageKey) private var luluMoodBehaviorRawValue: String = LuluMoodBehavior.random.rawValue
     @AppStorage(luluHappyAssetStorageKey) private var luluHappyAssetRawValue: String = LuluHappyAsset.happy1.rawValue
     @AppStorage(luluBadAssetStorageKey) private var luluBadAssetRawValue: String = LuluBadAsset.bad1.rawValue
+    @AppStorage(customStatsMoodModeIDStorageKey) private var customStatsMoodModeID: String = ""
     @AppStorage("myliverate.stats.hide_numbers") private var hideStatsNumbers = false
 #if DEBUG
     @AppStorage(trendHintLabScenarioStorageKey) private var trendHintLabScenarioRawValue: String = TrendHintLabScenario.none.rawValue
@@ -168,6 +172,10 @@ struct StatsDashboardView: View {
 
     private var selectedLuluBadAsset: LuluBadAsset {
         LuluBadAsset(rawValue: luluBadAssetRawValue) ?? .bad1
+    }
+
+    private var selectedCustomMoodMode: CustomStatsMoodMode? {
+        statsMoodViewModel.mode(id: customStatsMoodModeID)
     }
 
     private func maskedNumericText(_ text: String) -> String {
@@ -837,17 +845,32 @@ struct StatsDashboardView: View {
         case .lulu:
             guard let mood = luluCalendarMood(for: selectedDay) else { return nil }
             return .lulu(mood)
+        case .custom:
+            guard selectedCustomMoodMode != nil else {
+                guard let fallbackMood = calendarMood(for: selectedDay) else { return nil }
+                return .standard(fallbackMood)
+            }
+            guard let mood = luluCalendarMood(for: selectedDay) else { return nil }
+            return .custom(mood)
         }
     }
 
     private func refreshSelectedLuluAsset() {
-        guard selectedStatsMoodMode == .lulu else {
+        guard selectedStatsMoodMode == .lulu || selectedStatsMoodMode == .custom else {
             randomizedLuluAssetFileName = nil
+            randomizedCustomAssetID = nil
             return
         }
 
         guard let mood = luluCalendarMood(for: selectedDay) else {
             randomizedLuluAssetFileName = nil
+            randomizedCustomAssetID = nil
+            return
+        }
+
+        if selectedStatsMoodMode == .custom {
+            randomizedLuluAssetFileName = nil
+            randomizedCustomAssetID = randomCustomAssetID(for: mood)
             return
         }
 
@@ -871,6 +894,28 @@ struct StatsDashboardView: View {
         }
     }
 
+    private func randomCustomAssetID(for mood: LuluCalendarMood) -> UUID? {
+        guard let mode = selectedCustomMoodMode else { return nil }
+        switch mood {
+        case .defaultAsset:
+            return mode.defaultAsset?.id
+        case .profit:
+            switch mode.behavior {
+            case .random:
+                return mode.profitAssets.randomElement()?.id
+            case .manual:
+                return mode.selectedProfitAssetID ?? mode.profitAssets.first?.id
+            }
+        case .loss:
+            switch mode.behavior {
+            case .random:
+                return mode.lossAssets.randomElement()?.id
+            case .manual:
+                return mode.selectedLossAssetID ?? mode.lossAssets.first?.id
+            }
+        }
+    }
+
     private func resolvedLuluAssetFileName(for mood: LuluCalendarMood) -> String? {
         switch mood {
         case .defaultAsset:
@@ -888,6 +933,44 @@ struct StatsDashboardView: View {
                 return randomizedLuluAssetFileName ?? LuluBadAsset.allCases.first?.fileName
             case .manual:
                 return selectedLuluBadAsset.fileName
+            }
+        }
+    }
+
+    private func resolvedCustomAsset(for mood: LuluCalendarMood) -> CustomStatsMoodAsset? {
+        guard let mode = selectedCustomMoodMode else { return nil }
+        switch mood {
+        case .defaultAsset:
+            return mode.defaultAsset
+        case .profit:
+            switch mode.behavior {
+            case .random:
+                if let randomizedCustomAssetID,
+                   let asset = mode.profitAssets.first(where: { $0.id == randomizedCustomAssetID }) {
+                    return asset
+                }
+                return mode.profitAssets.first
+            case .manual:
+                if let selectedID = mode.selectedProfitAssetID,
+                   let asset = mode.profitAssets.first(where: { $0.id == selectedID }) {
+                    return asset
+                }
+                return mode.profitAssets.first
+            }
+        case .loss:
+            switch mode.behavior {
+            case .random:
+                if let randomizedCustomAssetID,
+                   let asset = mode.lossAssets.first(where: { $0.id == randomizedCustomAssetID }) {
+                    return asset
+                }
+                return mode.lossAssets.first
+            case .manual:
+                if let selectedID = mode.selectedLossAssetID,
+                   let asset = mode.lossAssets.first(where: { $0.id == selectedID }) {
+                    return asset
+                }
+                return mode.lossAssets.first
             }
         }
     }
@@ -1387,6 +1470,12 @@ struct StatsDashboardView: View {
         .onChange(of: luluBadAssetRawValue) { _, _ in
             refreshSelectedLuluAsset()
         }
+        .onChange(of: customStatsMoodModeID) { _, _ in
+            refreshSelectedLuluAsset()
+        }
+        .onChange(of: statsMoodViewModel.customModes) { _, _ in
+            refreshSelectedLuluAsset()
+        }
         .onChange(of: monthAmountMap) { _, _ in
             refreshSelectedLuluAsset()
         }
@@ -1704,11 +1793,12 @@ struct StatsDashboardView: View {
             )
             .frame(width: 220, height: 220)
         case .lulu(let mood):
-            if let assetFileName = resolvedLuluAssetFileName(for: mood),
-               let animatedImage = GIFImageLoader.animatedImage(named: assetFileName) {
-                AnimatedGIFView(image: animatedImage)
+            if hideStatsNumbers {
+                EmptyView()
+            } else if let assetFileName = resolvedLuluAssetFileName(for: mood) {
+                KingfisherGIFView(fileName: assetFileName, contentMode: .scaleAspectFill)
                     .frame(width: containerSize.width, height: containerSize.height)
-                    .saturation(hideStatsNumbers ? 0.38 : 1)
+                    .clipped()
             } else {
                 switch mood {
                 case .profit:
@@ -1716,7 +1806,7 @@ struct StatsDashboardView: View {
                         mood: .profit,
                         positiveColor: positiveColor,
                         negativeColor: negativeColor,
-                        isMuted: hideStatsNumbers
+                        isMuted: false
                     )
                     .frame(width: 220, height: 220)
                 case .loss:
@@ -1724,7 +1814,36 @@ struct StatsDashboardView: View {
                         mood: .loss,
                         positiveColor: positiveColor,
                         negativeColor: negativeColor,
-                        isMuted: hideStatsNumbers
+                        isMuted: false
+                    )
+                    .frame(width: 220, height: 220)
+                case .defaultAsset:
+                    EmptyView()
+                }
+            }
+        case .custom(let mood):
+            if hideStatsNumbers {
+                EmptyView()
+            } else if let asset = resolvedCustomAsset(for: mood), asset.signedURL != nil {
+                KingfisherRemoteGIFView(url: asset.signedURL, contentMode: .scaleAspectFill)
+                    .frame(width: containerSize.width, height: containerSize.height)
+                    .clipped()
+            } else {
+                switch mood {
+                case .profit:
+                    CalendarMoodBadgeView(
+                        mood: .profit,
+                        positiveColor: positiveColor,
+                        negativeColor: negativeColor,
+                        isMuted: false
+                    )
+                    .frame(width: 220, height: 220)
+                case .loss:
+                    CalendarMoodBadgeView(
+                        mood: .loss,
+                        positiveColor: positiveColor,
+                        negativeColor: negativeColor,
+                        isMuted: false
                     )
                     .frame(width: 220, height: 220)
                 case .defaultAsset:

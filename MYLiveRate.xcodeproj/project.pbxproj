@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1A882F0F2FF6373C00D0A6AA /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 1A882F0E2FF6373C00D0A6AA /* Lottie */; };
+		1A882F112FF6373C00D0A6AA /* Lottie-Dynamic in Frameworks */ = {isa = PBXBuildFile; productRef = 1A882F102FF6373C00D0A6AA /* Lottie-Dynamic */; };
 		6F3EE2B82FF16BF600E636A8 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 6F3EE2B72FF16BF600E636A8 /* Kingfisher */; };
 		A1B2C3D42FA34C3300CB972D /* Moya in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D52FA34C3300CB972D /* Moya */; };
 		B4A7D1E52FF036A100F715D2 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = B4A7D1E62FF036A100F715D2 /* Supabase */; };
@@ -29,9 +31,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A882F112FF6373C00D0A6AA /* Lottie-Dynamic in Frameworks */,
 				6F3EE2B82FF16BF600E636A8 /* Kingfisher in Frameworks */,
 				A1B2C3D42FA34C3300CB972D /* Moya in Frameworks */,
 				B4A7D1E52FF036A100F715D2 /* Supabase in Frameworks */,
+				1A882F0F2FF6373C00D0A6AA /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,6 +81,8 @@
 				A1B2C3D52FA34C3300CB972D /* Moya */,
 				B4A7D1E62FF036A100F715D2 /* Supabase */,
 				6F3EE2B72FF16BF600E636A8 /* Kingfisher */,
+				1A882F0E2FF6373C00D0A6AA /* Lottie */,
+				1A882F102FF6373C00D0A6AA /* Lottie-Dynamic */,
 			);
 			productName = MYLiveRate;
 			productReference = 1A37AC282FA34C3300CB972D /* MYLiveRate.app */;
@@ -115,6 +121,7 @@
 				1A0709752FADA193000B16B7 /* XCRemoteSwiftPackageReference "Moya" */,
 				6F3EE2202FF025F200E636A8 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				6F3EE2B62FF16BF600E636A8 /* XCRemoteSwiftPackageReference "Kingfisher" */,
+				1A882F0D2FF6373C00D0A6AA /* XCRemoteSwiftPackageReference "lottie-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1A37AC292FA34C3300CB972D /* Products */;
@@ -276,7 +283,7 @@
 				CODE_SIGN_ENTITLEMENTS = MYLiveRate/MYLiveRate.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 4JH5449NHT;
+				DEVELOPMENT_TEAM = 4YCC4XHF4V;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "众安助手";
@@ -313,7 +320,7 @@
 				CODE_SIGN_ENTITLEMENTS = MYLiveRate/MYLiveRate.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 4JH5449NHT;
+				DEVELOPMENT_TEAM = 4YCC4XHF4V;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "众安助手";
@@ -374,6 +381,14 @@
 				minimumVersion = 15.0.3;
 			};
 		};
+		1A882F0D2FF6373C00D0A6AA /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.6.1;
+			};
+		};
 		6F3EE2202FF025F200E636A8 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase/supabase-swift";
@@ -393,6 +408,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		1A882F0E2FF6373C00D0A6AA /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A882F0D2FF6373C00D0A6AA /* XCRemoteSwiftPackageReference "lottie-ios" */;
+			productName = Lottie;
+		};
+		1A882F102FF6373C00D0A6AA /* Lottie-Dynamic */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A882F0D2FF6373C00D0A6AA /* XCRemoteSwiftPackageReference "lottie-ios" */;
+			productName = "Lottie-Dynamic";
+		};
 		6F3EE2B72FF16BF600E636A8 /* Kingfisher */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 6F3EE2B62FF16BF600E636A8 /* XCRemoteSwiftPackageReference "Kingfisher" */;

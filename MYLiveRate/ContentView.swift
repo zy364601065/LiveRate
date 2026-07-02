@@ -9,7 +9,7 @@ struct ContentView: View {
         case settings
     }
 
-    @StateObject private var viewModel = ExchangeRateViewModel()
+    @StateObject private var viewModel: ExchangeRateViewModel
     @StateObject private var userProfileViewModel = UserProfileViewModel()
     @StateObject private var statsMoodViewModel = StatsMoodViewModel()
     @State private var selectedTab: MainTab = .rates
@@ -18,6 +18,15 @@ struct ContentView: View {
     @AppStorage("myliverate.app_theme") private var appThemeRawValue: String = AppTheme.system.rawValue
     @AppStorage("myliverate.default_landing_tab") private var defaultLandingTabRawValue: String = DefaultLandingTab.rates.rawValue
     private let tabAccentColor = Color(red: 0.95, green: 0.52, blue: 0.16)
+
+    @MainActor
+    init() {
+        _viewModel = StateObject(wrappedValue: ExchangeRateViewModel(localRecordsStore: .shared))
+    }
+
+    init(localRecordsStore: LocalRecordsStore) {
+        _viewModel = StateObject(wrappedValue: ExchangeRateViewModel(localRecordsStore: localRecordsStore))
+    }
 
     private var preferredScheme: ColorScheme? {
         switch AppTheme(rawValue: appThemeRawValue) ?? .system {

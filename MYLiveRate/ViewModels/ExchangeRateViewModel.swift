@@ -25,21 +25,21 @@ final class ExchangeRateViewModel: ObservableObject {
     @Published var holdingMessage: String?
     @Published var holdingRecords: [HoldingRecord] = []
 
+    private let localRecordsStore: LocalRecordsStore
     private let networkService = NetworkService()
     private let ocrService = DollarOCRService()
     private let holdingsOCRService = HoldingsOCRService()
     private let statsRecordSyncService = StatsRecordSyncService()
-    private let uploadRecordsStorageKey = "myliverate.upload_records.v1"
     private let amountTextStorageKey = "myliverate.amount_text.v1"
     private let latestThumbnailStorageKey = "myliverate.latest_upload_thumbnail.v1"
-    private let holdingRecordsStorageKey = "myliverate.holding_records.v1"
     private static let usMarketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
 
-    init() {
+    init(localRecordsStore: LocalRecordsStore) {
+        self.localRecordsStore = localRecordsStore
         amountText = loadPersistedAmountText()
-        uploadRecords = loadPersistedUploadRecords()
+        uploadRecords = localRecordsStore.fetchUploadRecords()
         latestUploadThumbnailData = UserDefaults.standard.data(forKey: latestThumbnailStorageKey)
-        holdingRecords = loadPersistedHoldingRecords()
+        holdingRecords = localRecordsStore.fetchHoldingRecords()
     }
 
     var targetCurrencies: [Currency] {
@@ -100,7 +100,7 @@ final class ExchangeRateViewModel: ObservableObject {
             logStatsSync("syncStatUploadRecords: mergedCount=\(mergedRecords.count)")
 
             uploadRecords = mergedRecords
-            persistUploadRecords()
+            localRecordsStore.upsertUploadRecords(mergedRecords)
 
             try await statsRecordSyncService.upsertUploadRecords(mergedRecords)
             logStatsSync("syncStatUploadRecords: completed upsertCount=\(mergedRecords.count)")
@@ -341,7 +341,7 @@ final class ExchangeRateViewModel: ObservableObject {
     private func addUploadRecord(_ record: UploadRecord) {
         uploadRecords.append(record)
         uploadRecords.sort { $0.timestamp < $1.timestamp }
-        persistUploadRecords()
+        localRecordsStore.addUploadRecord(record)
         syncUploadRecordToSupabase(record)
     }
 
@@ -397,27 +397,6 @@ final class ExchangeRateViewModel: ObservableObject {
         return thumbnail.jpegData(compressionQuality: 0.82)
     }
 
-    private func persistUploadRecords() {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(uploadRecords) else { return }
-        UserDefaults.standard.set(data, forKey: uploadRecordsStorageKey)
-    }
-
-    private func loadPersistedUploadRecords() -> [UploadRecord] {
-        guard let data = UserDefaults.standard.data(forKey: uploadRecordsStorageKey) else {
-            return []
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        guard let records = try? decoder.decode([UploadRecord].self, from: data) else {
-            return []
-        }
-
-        return records.sorted { $0.timestamp < $1.timestamp }
-    }
-
     private func addHoldingRecords(_ records: [HoldingRecord]) {
         var mergedByKey: [String: HoldingRecord] = [:]
 
@@ -431,12 +410,12 @@ final class ExchangeRateViewModel: ObservableObject {
         }
 
         holdingRecords = Array(mergedByKey.values).sorted { $0.timestamp > $1.timestamp }
-        persistHoldingRecords()
+        localRecordsStore.mergeHoldingRecords(records)
     }
 
     func removeHoldingRecord(id: UUID) {
         holdingRecords.removeAll { $0.id == id }
-        persistHoldingRecords()
+        localRecordsStore.removeHoldingRecord(id: id)
     }
 
     func updateHoldingName(id: UUID, newName: String) {
@@ -467,7 +446,7 @@ final class ExchangeRateViewModel: ObservableObject {
             holdingPnLPercent: old.holdingPnLPercent
         )
         holdingRecords.sort { $0.timestamp > $1.timestamp }
-        persistHoldingRecords()
+        localRecordsStore.updateHoldingIdentity(id: id, newName: trimmedName, newCode: normalizedCode)
     }
 
     private func holdingKey(for record: HoldingRecord) -> String {
@@ -481,27 +460,6 @@ final class ExchangeRateViewModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .replacingOccurrences(of: " ", with: "")
-    }
-
-    private func persistHoldingRecords() {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(holdingRecords) else { return }
-        UserDefaults.standard.set(data, forKey: holdingRecordsStorageKey)
-    }
-
-    private func loadPersistedHoldingRecords() -> [HoldingRecord] {
-        guard let data = UserDefaults.standard.data(forKey: holdingRecordsStorageKey) else {
-            return []
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        guard let records = try? decoder.decode([HoldingRecord].self, from: data) else {
-            return []
-        }
-
-        return records.sorted { $0.timestamp > $1.timestamp }
     }
 
 }

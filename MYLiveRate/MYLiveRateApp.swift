@@ -6,12 +6,16 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct MYLiveRateApp: App {
+    private let localRecordsStore = LocalRecordsStore.shared
+
     var body: some Scene {
         WindowGroup {
             AuthGateView()
+                .modelContainer(localRecordsStore.container)
         }
     }
 }

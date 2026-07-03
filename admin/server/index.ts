@@ -41,6 +41,17 @@ type ProfileRow = {
   updated_at: string;
 };
 
+type StatUploadRecordRow = {
+  id: string;
+  user_id: string;
+  timestamp: string;
+  usd_amount: number;
+};
+
+type StatUploadRecordPayload = StatUploadRecordRow & {
+  nickname: string | null;
+};
+
 type AdminUserPayload = {
   id: string;
   email: string | null;
@@ -170,6 +181,14 @@ app.get("/api/users/:userID", async (request, response) => {
         private_mood_count: privateMoodCount ?? 0
       }
     });
+  } catch (error) {
+    sendError(response, error);
+  }
+});
+
+app.get("/api/stat-upload-records", async (_request, response) => {
+  try {
+    response.json({ records: await fetchStatUploadRecords() });
   } catch (error) {
     sendError(response, error);
   }
@@ -436,6 +455,38 @@ async function fetchUsers(): Promise<AdminUserPayload[]> {
       profile_status: profile ? "synced" : "missing"
     };
   });
+}
+
+async function fetchStatUploadRecords(): Promise<StatUploadRecordPayload[]> {
+  const { data: records, error: recordsError } = await supabase
+    .from("stat_upload_records")
+    .select("id,user_id,timestamp,usd_amount")
+    .order("timestamp", { ascending: false })
+    .limit(500);
+
+  if (recordsError) throw recordsError;
+
+  const typedRecords = (records ?? []) as StatUploadRecordRow[];
+  const userIDs = Array.from(new Set(typedRecords.map((record) => record.user_id)));
+  const profileByID = new Map<string, ProfileRow>();
+
+  if (userIDs.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from("user_profiles")
+      .select("id,nickname,created_at,updated_at")
+      .in("id", userIDs);
+
+    if (profilesError) throw profilesError;
+
+    for (const profile of (profiles ?? []) as ProfileRow[]) {
+      profileByID.set(profile.id, profile);
+    }
+  }
+
+  return typedRecords.map((record) => ({
+    ...record,
+    nickname: profileByID.get(record.user_id)?.nickname ?? null
+  }));
 }
 
 async function fetchMode(modeID: string): Promise<ModeRow> {

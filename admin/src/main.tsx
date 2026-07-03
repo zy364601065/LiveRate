@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clipboard,
   CloudUpload,
+  Database,
   Globe2,
   ImagePlus,
   LayoutDashboard,
@@ -21,7 +22,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-type SectionKey = "users" | "moods";
+type SectionKey = "users" | "records" | "moods";
 type MoodScope = "global" | "user";
 type MoodBehavior = "random" | "manual";
 type AssetKind = "default" | "profit" | "loss";
@@ -60,6 +61,14 @@ type AdminUser = {
   private_mood_count?: number;
 };
 
+type StatUploadRecord = {
+  id: string;
+  user_id: string;
+  nickname: string | null;
+  timestamp: string;
+  usd_amount: number;
+};
+
 type ModeDraft = {
   name: string;
   scope: MoodScope;
@@ -75,12 +84,14 @@ function App() {
   const [activeSection, setActiveSection] = useState<SectionKey>("users");
   const [modes, setModes] = useState<MoodMode[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [uploadRecords, setUploadRecords] = useState<StatUploadRecord[]>([]);
   const [selectedModeID, setSelectedModeID] = useState<string>("");
   const [selectedUserID, setSelectedUserID] = useState<string>("");
   const [selectedUserDetail, setSelectedUserDetail] = useState<AdminUser | null>(null);
   const [draft, setDraft] = useState<ModeDraft>({ name: "", scope: "global", userId: "", behavior: "random" });
   const [moodFilter, setMoodFilter] = useState<"all" | MoodScope>("all");
   const [userSearch, setUserSearch] = useState("");
+  const [recordSearch, setRecordSearch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -96,10 +107,20 @@ function App() {
       || (user.nickname ?? "").toLowerCase().includes(keyword)
     );
   }, [users, userSearch]);
+  const filteredUploadRecords = useMemo(() => {
+    const keyword = recordSearch.trim().toLowerCase();
+    if (!keyword) return uploadRecords;
+    return uploadRecords.filter((record) =>
+      record.id.toLowerCase().includes(keyword)
+      || record.user_id.toLowerCase().includes(keyword)
+      || (record.nickname ?? "").toLowerCase().includes(keyword)
+    );
+  }, [uploadRecords, recordSearch]);
 
   useEffect(() => {
     if (!password) return;
     void loadUsers();
+    void loadUploadRecords();
     void loadModes();
   }, [password]);
 
@@ -195,6 +216,19 @@ function App() {
       if (!selectedModeID && payload.modes.length > 0) {
         setSelectedModeID(payload.modes[0].id);
       }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function loadUploadRecords() {
+    setIsLoading(true);
+    setMessage(null);
+    try {
+      const payload = await api<{ records: StatUploadRecord[] }>("/api/stat-upload-records");
+      setUploadRecords(payload.records);
     } catch (error) {
       showError(error);
     } finally {
@@ -335,6 +369,7 @@ function App() {
     setPassword("");
     setModes([]);
     setUsers([]);
+    setUploadRecords([]);
   }
 
   function showError(error: unknown) {
@@ -400,6 +435,17 @@ function App() {
               <small>{modes.length} 个模式</small>
             </span>
           </button>
+          <button
+            type="button"
+            className={activeSection === "records" ? "active" : ""}
+            onClick={() => setActiveSection("records")}
+          >
+            <Database size={18} />
+            <span>
+              <strong>上传记录</strong>
+              <small>{uploadRecords.length} 条记录</small>
+            </span>
+          </button>
         </nav>
 
         <button className="ghost-button" type="button" onClick={logout}>退出后台</button>
@@ -419,6 +465,16 @@ function App() {
             onSearchChange={setUserSearch}
             onRefresh={loadUsers}
             onSelectUser={loadUserDetail}
+            onCopyUserID={copyUserID}
+          />
+        ) : activeSection === "records" ? (
+          <UploadRecordsView
+            records={filteredUploadRecords}
+            allRecords={uploadRecords}
+            search={recordSearch}
+            isLoading={isLoading}
+            onSearchChange={setRecordSearch}
+            onRefresh={loadUploadRecords}
             onCopyUserID={copyUserID}
           />
         ) : (
@@ -586,6 +642,104 @@ function UserDetailPanel({ user, onCopyUserID }: { user: AdminUser | null; onCop
         复制用户 ID
       </button>
     </aside>
+  );
+}
+
+function UploadRecordsView({
+  records,
+  allRecords,
+  search,
+  isLoading,
+  onSearchChange,
+  onRefresh,
+  onCopyUserID
+}: {
+  records: StatUploadRecord[];
+  allRecords: StatUploadRecord[];
+  search: string;
+  isLoading: boolean;
+  onSearchChange: (value: string) => void;
+  onRefresh: () => Promise<void>;
+  onCopyUserID: (userID: string) => Promise<void>;
+}) {
+  const userCount = new Set(allRecords.map((record) => record.user_id)).size;
+  const namedCount = allRecords.filter((record) => record.nickname).length;
+
+  return (
+    <>
+      <SectionHeader
+        eyebrow="Records"
+        title="上传记录"
+        description="查看统计上传明细，按昵称或用户 ID 快速定位是谁上传的。"
+        action={
+          <button type="button" className="secondary-button" onClick={() => void onRefresh()} disabled={isLoading}>
+            {isLoading ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
+            刷新
+          </button>
+        }
+      />
+
+      <div className="metric-grid">
+        <MetricCard label="最近记录" value={allRecords.length.toString()} />
+        <MetricCard label="涉及用户" value={userCount.toString()} />
+        <MetricCard label="已匹配昵称" value={namedCount.toString()} />
+      </div>
+
+      <section className="panel">
+        <div className="panel-title">
+          <div>
+            <h3>记录明细</h3>
+            <p>默认显示最近 500 条上传记录，昵称来自用户资料表。</p>
+          </div>
+          <label className="search-field">
+            <Search size={17} />
+            <input
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="搜索昵称 / 用户 ID / 记录 ID"
+            />
+          </label>
+        </div>
+
+        <div className="table-wrap">
+          <table className="data-table records-table">
+            <thead>
+              <tr>
+                <th>用户</th>
+                <th>上传时间</th>
+                <th>美元金额</th>
+                <th>记录 ID</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((record) => (
+                <tr key={record.id}>
+                  <td>
+                    <strong>{record.nickname ?? "未设置昵称"}</strong>
+                    <small>{shortID(record.user_id)}</small>
+                  </td>
+                  <td>{formatDate(record.timestamp)}</td>
+                  <td><strong>{formatUSD(record.usd_amount)}</strong></td>
+                  <td><small>{shortID(record.id)}</small></td>
+                  <td>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="复制用户 ID"
+                      onClick={() => void onCopyUserID(record.user_id)}
+                    >
+                      <Clipboard size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {records.length === 0 && <div className="empty-state">暂无匹配上传记录</div>}
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -971,6 +1125,14 @@ function formatDate(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatUSD(value: number): string {
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2
+  }).format(value);
 }
 
 createRoot(document.getElementById("root")!).render(

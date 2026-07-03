@@ -348,6 +348,15 @@ button:focus-visible,
   background: var(--color-muted);
 }
 
+.records-table tr {
+  cursor: default;
+}
+
+.records-table td:nth-child(3) strong {
+  max-width: none;
+  color: var(--color-primary-dark);
+}
+
 .data-table td strong,
 .data-table td small {
   display: block;

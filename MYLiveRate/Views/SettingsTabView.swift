@@ -348,7 +348,11 @@ struct SettingsTabView: View {
 private struct UserProfileSettingsView: View {
     @ObservedObject var profileViewModel: UserProfileViewModel
     @State private var draftNickname = ""
+    @State private var draftBirthday = Date()
+    @State private var birthdayEnabled = false
     @State private var hasSeededDraft = false
+    @State private var didCopyUserID = false
+    @FocusState private var isNicknameFocused: Bool
 
     private var trimmedNickname: String {
         draftNickname.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -360,119 +364,25 @@ private struct UserProfileSettingsView: View {
             && !profileViewModel.isSaving
     }
 
+    private var draftBirthdayString: String {
+        Self.storageBirthdayFormatter.string(from: draftBirthday)
+    }
+
+    private var canSaveBirthday: Bool {
+        let currentBirthday = profileViewModel.birthday
+        let nextBirthday = birthdayEnabled ? draftBirthdayString : nil
+        return currentBirthday != nextBirthday && !profileViewModel.isSaving
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 18) {
-                SettingsMenuGroup("昵称") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label {
-                            Text("显示昵称")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(settingsTitleColor)
-                        } icon: {
-                            Image(systemName: "pencil.line")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(settingsAccentColor)
-                        }
-                        .labelStyle(.titleAndIcon)
-
-                        TextField("众安_4839201", text: $draftNickname)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .font(.body)
-                            .padding(.horizontal, 12)
-                            .frame(minHeight: 48)
-                            .background(settingsSecondarySurfaceColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(settingsDividerColor, lineWidth: 1)
-                                .allowsHitTesting(false)
-                        }
-                            .accessibilityLabel("昵称")
-                            .accessibilityHint("输入 1 到 24 个字符的昵称")
-
-                        if let errorMessage = profileViewModel.errorMessage {
-                            Text(errorMessage)
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.red)
-                                .accessibilityLabel("错误：\(errorMessage)")
-                        }
-
-                        Button {
-                            Task {
-                                await profileViewModel.updateNickname(draftNickname)
-                                seedDraft(force: true)
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if profileViewModel.isSaving {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-                                Text(profileViewModel.isSaving ? "保存中" : "保存昵称")
-                                    .font(.subheadline.weight(.semibold))
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 46)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(settingsAccentColor)
-                        .disabled(!canSave)
-                        .accessibilityHint(canSave ? "保存当前昵称" : "昵称未变化或格式不正确")
-                    }
-                    .padding(.vertical, 8)
-                }
-
-                SettingsMenuGroup("账号") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Label {
-                            Text("Supabase 用户 ID")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(settingsTitleColor)
-                        } icon: {
-                            Image(systemName: "key.horizontal.fill")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(settingsAccentColor)
-                        }
-                        .labelStyle(.titleAndIcon)
-
-                        Text(profileViewModel.userIDText)
-                            .font(.footnote.monospaced())
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .lineLimit(3)
-                            .minimumScaleFactor(0.82)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(settingsSecondarySurfaceColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                        if profileViewModel.isLoading {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text("正在同步个人信息")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else if profileViewModel.canRetry {
-                            Button {
-                                Task {
-                                    await profileViewModel.loadOrCreateProfile()
-                                    seedDraft(force: true)
-                                }
-                            } label: {
-                                Label("重新同步", systemImage: "arrow.clockwise")
-                                    .frame(minHeight: 44)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(settingsAccentColor)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
+            VStack(alignment: .leading, spacing: 16) {
+                profileHeader
+                profileInfoPanel
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 28)
+            .padding(.top, 10)
+            .padding(.bottom, 32)
         }
         .background(SettingsPageBackground())
         .navigationTitle("个人信息")
@@ -483,13 +393,323 @@ private struct UserProfileSettingsView: View {
         .onChange(of: profileViewModel.nickname) {
             seedDraft(force: !hasSeededDraft)
         }
+        .onChange(of: profileViewModel.birthday) {
+            seedBirthdayDraft()
+        }
+    }
+
+    private var profileHeader: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(settingsAccentColor.opacity(0.14))
+                Text(profileViewModel.displayNickname.prefix(1))
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(settingsAccentColor)
+            }
+            .frame(width: 58, height: 58)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(profileViewModel.displayNickname)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(settingsTitleColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                HStack(spacing: 6) {
+                    if profileViewModel.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(profileViewModel.isLoading ? "正在同步" : "个人信息")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 8)
+    }
+
+    private var profileInfoPanel: some View {
+        VStack(spacing: 0) {
+            userIDRow
+            SettingsMenuDivider()
+                .padding(.leading, -49)
+            nicknameEditorRow
+            SettingsMenuDivider()
+                .padding(.leading, -49)
+            birthdayEditorRow
+
+            if let errorMessage = profileViewModel.errorMessage {
+                SettingsMenuDivider()
+                    .padding(.leading, -49)
+                Text(errorMessage)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("错误：\(errorMessage)")
+            }
+
+            if profileViewModel.canRetry {
+                SettingsMenuDivider()
+                    .padding(.leading, -49)
+                profileStatusView
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(settingsSurfaceColor, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(settingsDividerColor, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .shadow(color: Color.black.opacity(0.035), radius: 14, x: 0, y: 7)
+    }
+
+    private var userIDRow: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("用户 ID")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(profileViewModel.userIDText)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(settingsTitleColor.opacity(0.82))
+                    .textSelection(.enabled)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.76)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                copyUserID()
+            } label: {
+                Image(systemName: didCopyUserID ? "checkmark" : "doc.on.doc")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(settingsAccentColor)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(profileViewModel.userIDText == "同步中")
+            .accessibilityLabel(didCopyUserID ? "已复制用户 ID" : "复制用户 ID")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+        .contentShape(Rectangle())
+        .onLongPressGesture {
+            copyUserID()
+        }
+        .contextMenu {
+            Button {
+                copyUserID()
+            } label: {
+                Label("复制用户 ID", systemImage: "doc.on.doc")
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("长按复制用户 ID")
+    }
+
+    private var nicknameEditorRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("昵称")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    TextField("众安_4839201", text: $draftNickname)
+                        .focused($isNicknameFocused)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(settingsTitleColor)
+                        .submitLabel(.done)
+                        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+                        .accessibilityLabel("昵称")
+                        .accessibilityHint("输入 1 到 24 个字符的昵称")
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    Task {
+                        await profileViewModel.updateNickname(draftNickname)
+                        seedDraft(force: true)
+                    }
+                } label: {
+                    if profileViewModel.isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 52, height: 36)
+                    } else {
+                        Text("保存")
+                            .font(.footnote.weight(.semibold))
+                            .frame(width: 52, height: 36)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(settingsAccentColor)
+                .disabled(!canSave)
+                .accessibilityHint(canSave ? "保存当前昵称" : "昵称未变化或格式不正确")
+            }
+
+            Text("\(trimmedNickname.count)/24")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+        .background(isNicknameFocused ? settingsAccentColor.opacity(0.055) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            isNicknameFocused = true
+        }
+    }
+
+    private var birthdayEditorRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("生日")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(profileViewModel.birthdayDisplayText)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(settingsTitleColor)
+                }
+
+                Spacer(minLength: 8)
+
+                Toggle("", isOn: $birthdayEnabled)
+                    .labelsHidden()
+                    .tint(settingsAccentColor)
+                    .accessibilityLabel(birthdayEnabled ? "已启用生日" : "未填写生日")
+            }
+
+            if birthdayEnabled {
+                DatePicker(
+                    "选择生日",
+                    selection: $draftBirthday,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .environment(\.locale, Locale(identifier: "zh_CN"))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    Task {
+                        await profileViewModel.updateBirthday(birthdayEnabled ? draftBirthdayString : nil)
+                        seedBirthdayDraft()
+                    }
+                } label: {
+                    if profileViewModel.isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 72, height: 36)
+                    } else {
+                        Text("保存生日")
+                            .font(.footnote.weight(.semibold))
+                            .frame(width: 72, height: 36)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(settingsAccentColor)
+                .disabled(!canSaveBirthday)
+
+                Button {
+                    Task {
+                        birthdayEnabled = false
+                        await profileViewModel.updateBirthday(nil)
+                        seedBirthdayDraft()
+                    }
+                } label: {
+                    Text("清空")
+                        .font(.footnote.weight(.semibold))
+                        .frame(width: 52, height: 36)
+                }
+                .buttonStyle(.bordered)
+                .tint(settingsAccentColor)
+                .disabled(profileViewModel.birthday == nil || profileViewModel.isSaving)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var profileStatusView: some View {
+        if profileViewModel.canRetry {
+            Button {
+                Task {
+                    await profileViewModel.loadOrCreateProfile()
+                    seedDraft(force: true)
+                }
+            } label: {
+                Label("重新同步", systemImage: "arrow.clockwise")
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(settingsAccentColor)
+        }
+    }
+
+    private func copyUserID() {
+        let userID = profileViewModel.userIDText
+        guard userID != "同步中" else { return }
+        UIPasteboard.general.string = userID
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.easeInOut(duration: 0.18)) {
+            didCopyUserID = true
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    didCopyUserID = false
+                }
+            }
+        }
     }
 
     private func seedDraft(force: Bool = false) {
         guard force || !hasSeededDraft else { return }
         draftNickname = profileViewModel.nickname ?? ""
+        seedBirthdayDraft()
         hasSeededDraft = true
     }
+
+    private func seedBirthdayDraft() {
+        if let birthday = profileViewModel.birthday,
+           let date = Self.storageBirthdayFormatter.date(from: birthday) {
+            draftBirthday = date
+            birthdayEnabled = true
+        } else {
+            draftBirthday = Date()
+            birthdayEnabled = false
+        }
+    }
+
+    private static let storageBirthdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 private struct DefaultLandingTabSettingsView: View {
@@ -539,15 +759,11 @@ private struct DefaultLandingTabSettingsView: View {
 private struct GeneralSettingsView: View {
     @AppStorage(appThemeStorageKey) private var appThemeRawValue: String = AppTheme.system.rawValue
     @AppStorage(showAllExchangeRatesStorageKey) private var showAllExchangeRates = false
-    @AppStorage(trendHintToneStorageKey) private var trendHintToneRawValue: String = TrendHintTone.wild.rawValue
 
     private var selectedTheme: AppTheme {
         AppTheme(rawValue: appThemeRawValue) ?? .system
     }
 
-    private var selectedHintTone: TrendHintTone {
-        TrendHintTone(rawValue: trendHintToneRawValue) ?? .wild
-    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -591,26 +807,6 @@ private struct GeneralSettingsView: View {
                     .frame(minHeight: 52)
                 }
 
-                SettingsMenuGroup("统计提示") {
-                    VStack(spacing: 0) {
-                        ForEach(Array(TrendHintTone.allCases.enumerated()), id: \.element.id) { index, tone in
-                            Button {
-                                trendHintToneRawValue = tone.rawValue
-                            } label: {
-                                SettingsCompactOptionRow(
-                                    title: tone.displayName,
-                                    icon: "waveform.path.ecg",
-                                    isSelected: selectedHintTone == tone
-                                )
-                            }
-                            .buttonStyle(.plain)
-
-                            if index < TrendHintTone.allCases.count - 1 {
-                                SettingsMenuDivider()
-                            }
-                        }
-                    }
-                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)

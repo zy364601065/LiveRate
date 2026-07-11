@@ -1,5 +1,5 @@
 {
-  "originHash" : "030273defaeb8ad2f160df8942fa1f05ebf51ab27e07f8ec134acf55a8128302",
+  "originHash" : "69b6fd0fb68a3870d7fbbfca258d683680862f5cc8ea800149cdbab7c7ed1408",
   "pins" : [
     {
       "identity" : "alamofire",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "f4db77d7feacba0c2360b84a40c38a6ce8ff399d",
         "version" : "4.6.1"
+      }
+    },
+    {
+      "identity" : "marqueelabel",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/cbpowell/MarqueeLabel",
+      "state" : {
+        "revision" : "c6b4da400c00dfd5db7a4f6e4915ca531d95fc49",
+        "version" : "4.5.3"
       }
     },
     {

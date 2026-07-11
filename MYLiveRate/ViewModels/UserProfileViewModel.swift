@@ -24,6 +24,15 @@ final class UserProfileViewModel: ObservableObject {
         nickname ?? "同步中"
     }
 
+    var birthday: String? {
+        profile?.birthday
+    }
+
+    var birthdayDisplayText: String {
+        guard let birthday else { return "未填写" }
+        return Self.displayBirthday(from: birthday)
+    }
+
     var canRetry: Bool {
         !isLoading && profile == nil
     }
@@ -66,11 +75,29 @@ final class UserProfileViewModel: ObservableObject {
         do {
             let userID = try await service.authenticatedUserID()
             prepareCacheForCurrentUser(userID)
-            let updatedProfile = try await service.upsertProfile(nickname: trimmed, userID: userID)
+            let updatedProfile = try await service.upsertProfile(nickname: trimmed, birthday: profile?.birthday, userID: userID)
             applyProfile(updatedProfile)
         } catch {
             logError("updateNickname failed", error: error)
             errorMessage = "昵称保存失败，请检查网络后重试。"
+        }
+    }
+
+    func updateBirthday(_ birthday: String?) async {
+        guard !isSaving else { return }
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            let userID = try await service.authenticatedUserID()
+            prepareCacheForCurrentUser(userID)
+            let nickname = profile?.nickname ?? cachedNickname ?? Self.makeDefaultNickname()
+            let updatedProfile = try await service.upsertProfile(nickname: nickname, birthday: birthday, userID: userID)
+            applyProfile(updatedProfile)
+        } catch {
+            logError("updateBirthday failed", error: error)
+            errorMessage = "生日保存失败，请检查网络后重试。"
         }
     }
 
@@ -82,6 +109,13 @@ final class UserProfileViewModel: ObservableObject {
     private static func makeDefaultNickname() -> String {
         let digits = (0..<7).map { _ in String(Int.random(in: 0...9)) }.joined()
         return "众安_\(digits)"
+    }
+
+    private static func displayBirthday(from birthday: String) -> String {
+        guard birthday.count >= 10 else { return birthday }
+        let monthDay = birthday.suffix(5).split(separator: "-")
+        guard monthDay.count == 2 else { return birthday }
+        return "\(Int(monthDay[0]) ?? 0)月\(Int(monthDay[1]) ?? 0)日"
     }
 
     private func applyProfile(_ profile: UserProfile) {

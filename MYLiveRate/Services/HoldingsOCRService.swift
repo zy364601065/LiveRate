@@ -3,6 +3,11 @@ import Vision
 import UIKit
 
 final class HoldingsOCRService {
+    private struct RecognizedLine {
+        let text: String
+        let box: CGRect
+    }
+
     private struct ParsedHoldingPayload {
         let stockName: String
         let stockCode: String?
@@ -31,12 +36,28 @@ final class HoldingsOCRService {
             let handler = VNImageRequestHandler(cgImage: cgImage)
             try handler.perform([request])
 
-            let lines = (request.results ?? [])
-                .compactMap { $0.topCandidates(1).first?.string }
-                .map { Self.normalize($0) }
-                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let recognizedLines = (request.results ?? [])
+                .compactMap { observation -> RecognizedLine? in
+                    guard let candidate = observation.topCandidates(1).first else { return nil }
+                    let text = Self.normalize(candidate.string)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return nil }
+                    return RecognizedLine(text: text, box: observation.boundingBox)
+                }
+                .sorted {
+                    let verticalDifference = abs($0.box.midY - $1.box.midY)
+                    if verticalDifference < 0.018 { return $0.box.minX < $1.box.minX }
+                    return $0.box.midY > $1.box.midY
+                }
+
+            let lines = recognizedLines.map(\.text)
 
             guard !lines.isEmpty else { return [] }
+
+            let spatialPayloads = Self.extractSpatialCardHoldings(from: recognizedLines)
+            if !spatialPayloads.isEmpty {
+                return spatialPayloads
+            }
 
             let blockPayloads = Self.extractBlockHoldings(from: lines)
             if !blockPayloads.isEmpty {
@@ -56,9 +77,12 @@ final class HoldingsOCRService {
         }.value
 
         let now = Date()
-        return payloads.map { payload in
+        return payloads.enumerated().map { index, payload in
             HoldingRecord(
-                timestamp: now,
+                // The list is sorted newest-first. Give records from the same image
+                // stable descending timestamps so their visual top-to-bottom order
+                // survives dictionary merging and persistence.
+                timestamp: now.addingTimeInterval(-Double(index) * 0.001),
                 stockName: payload.stockName,
                 stockCode: payload.stockCode,
                 marketValue: payload.marketValue,
@@ -71,6 +95,144 @@ final class HoldingsOCRService {
                 holdingPnLPercent: payload.holdingPnLPercent
             )
         }
+    }
+
+    nonisolated private static func extractSpatialCardHoldings(
+        from lines: [RecognizedLine]
+    ) -> [ParsedHoldingPayload] {
+        let anchors = lines
+            .filter { $0.text.contains("市值") && $0.text.contains("数量") }
+            .sorted { $0.box.midY > $1.box.midY }
+
+        guard !anchors.isEmpty else { return [] }
+        if anchors.count == 1 {
+            return extractSpatialCardHolding(from: lines).map { [$0] } ?? []
+        }
+
+        return anchors.enumerated().compactMap { index, anchor in
+            let typicalGap: CGFloat = 0.24
+            let upperY: CGFloat
+            let lowerY: CGFloat
+
+            if index == 0 {
+                let nextGap = anchor.box.midY - anchors[index + 1].box.midY
+                upperY = min(1, anchor.box.midY + max(nextGap / 2, typicalGap / 2))
+            } else {
+                let previousGap = anchors[index - 1].box.midY - anchor.box.midY
+                upperY = anchor.box.midY + previousGap * 0.35
+            }
+
+            if index == anchors.count - 1 {
+                let previousGap = anchors[index - 1].box.midY - anchor.box.midY
+                lowerY = max(0, anchor.box.midY - max(previousGap / 2, typicalGap / 2))
+            } else {
+                let nextGap = anchor.box.midY - anchors[index + 1].box.midY
+                lowerY = anchors[index + 1].box.midY + nextGap * 0.35
+            }
+
+            let cardLines = lines.filter {
+                $0.box.midY <= upperY && $0.box.midY > lowerY
+            }
+            return extractSpatialCardHolding(from: cardLines)
+        }
+    }
+
+    nonisolated private static func extractSpatialCardHolding(
+        from lines: [RecognizedLine]
+    ) -> ParsedHoldingPayload? {
+        guard ["市值", "数量", "现价", "成本", "今日盈亏", "持仓盈亏"].allSatisfy({ keyword in
+            lines.contains(where: { $0.text.contains(keyword) })
+        }) else { return nil }
+
+        func valueText(for keywords: [String]) -> String? {
+            guard let label = lines.first(where: { line in
+                keywords.allSatisfy { line.text.contains($0) }
+            }) else { return nil }
+
+            if !extractNumbersExcludingPercent(from: label.text).isEmpty || !extractPercentages(from: label.text).isEmpty {
+                return label.text
+            }
+
+            let candidates = lines.filter { candidate in
+                candidate.box.midY < label.box.midY &&
+                label.box.midY - candidate.box.midY < 0.18 &&
+                abs(candidate.box.midX - label.box.midX) < 0.22
+            }
+            .sorted {
+                let firstDistance = label.box.midY - $0.box.midY
+                let secondDistance = label.box.midY - $1.box.midY
+                if abs(firstDistance - secondDistance) < 0.018 { return $0.box.minX < $1.box.minX }
+                return firstDistance < secondDistance
+            }
+
+            guard let first = candidates.first else { return nil }
+            var result = first.text
+
+            // Vision occasionally returns a minus sign as a separate box immediately to the left.
+            if !result.hasPrefix("-") {
+                let sign = lines.first { candidate in
+                    candidate.text == "-" &&
+                    abs(candidate.box.midY - first.box.midY) < 0.025 &&
+                    candidate.box.maxX <= first.box.minX + 0.02
+                }
+                if sign != nil { result = "-" + result }
+            }
+            return result
+        }
+
+        guard let marketText = valueText(for: ["市值", "数量"]),
+              let priceText = valueText(for: ["现价", "成本"]),
+              let todayText = valueText(for: ["今日盈亏"]),
+              let holdingText = valueText(for: ["持仓盈亏"]) else { return nil }
+
+        let marketValues = extractNumbersExcludingPercent(from: marketText)
+        let priceValues = extractNumbersExcludingPercent(from: priceText)
+        let todayValues = extractNumbersExcludingPercent(from: todayText)
+        let holdingValues = extractNumbersExcludingPercent(from: holdingText)
+        guard marketValues.count >= 2, priceValues.count >= 2 else { return nil }
+
+        let firstMetricY = lines
+            .filter { $0.text.contains("市值") || $0.text.contains("今日盈亏") }
+            .map(\.box.midY)
+            .max() ?? 0
+        let identityLines = lines.filter {
+            $0.box.midY > firstMetricY && !isHeaderLike($0.text.replacingOccurrences(of: " ", with: ""))
+        }
+        let nameLine = identityLines
+            .filter { $0.text.range(of: #"[\u4e00-\u9fa5]"#, options: .regularExpression) != nil }
+            .max(by: { $0.text.count < $1.text.count })
+            ?? identityLines.first(where: { extractTicker(from: $0.text) == nil })
+        let name = nameLine?.text ?? "未识别股票"
+
+        let codeCandidates = identityLines.filter {
+            $0.text.range(of: #"^[A-Z]{2,6}(?:\.[A-Z])?$"#, options: .regularExpression) != nil
+        }
+        // A logo/avatar letter is commonly recognized as a ticker. Prefer text directly
+        // below and horizontally aligned with the security name instead.
+        let alignedCode = nameLine.flatMap { nameLine in
+            codeCandidates
+                .filter {
+                    $0.box.midY < nameLine.box.midY &&
+                    nameLine.box.midY - $0.box.midY < 0.16 &&
+                    abs($0.box.minX - nameLine.box.minX) < 0.12
+                }
+                .min(by: { nameLine.box.midY - $0.box.midY < nameLine.box.midY - $1.box.midY })
+        }
+        let code = alignedCode?.text
+            ?? codeCandidates.first(where: { $0.text.count >= 2 })?.text
+
+        return ParsedHoldingPayload(
+            stockName: name,
+            stockCode: code,
+            marketValue: marketValues[0],
+            quantity: marketValues[1],
+            currentPrice: priceValues[0],
+            costPrice: priceValues[1],
+            todayPnL: todayValues.first,
+            todayPnLPercent: extractPercentages(from: todayText).first,
+            holdingPnL: holdingValues.first,
+            holdingPnLPercent: extractPercentages(from: holdingText).first
+        )
     }
 
     nonisolated private static func extractBlockHoldings(from lines: [String]) -> [ParsedHoldingPayload] {
@@ -227,7 +389,7 @@ final class HoldingsOCRService {
         let ignoredKeywords = ["市值", "数量", "现价", "成本", "盈亏", "持仓", "今日", "收益"]
         for line in lines {
             let compact = line.replacingOccurrences(of: " ", with: "")
-            if compact.count < 2 || compact.count > 20 { continue }
+            if compact.count < 2 || compact.count > 80 { continue }
             if ignoredKeywords.contains(where: { compact.contains($0) }) { continue }
             if compact.range(of: #"[\u4e00-\u9fa5A-Za-z]{2,}"#, options: .regularExpression) != nil {
                 return compact
@@ -344,7 +506,9 @@ final class HoldingsOCRService {
     }
 
     nonisolated private static func extractTicker(from line: String) -> String? {
-        let pattern = #"\b[A-Z]{1,5}(?:\.[A-Z])?\b"#
+        // Holdings screenshots often contain a one-letter logo/avatar. Requiring at
+        // least two letters prevents that decorative glyph from becoming the ticker.
+        let pattern = #"\b[A-Z]{2,6}(?:\.[A-Z])?\b"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let range = NSRange(line.startIndex..<line.endIndex, in: line)
         guard let match = regex.firstMatch(in: line, range: range),

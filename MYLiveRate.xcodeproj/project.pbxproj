@@ -8,8 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		1A882F0F2FF6373C00D0A6AA /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 1A882F0E2FF6373C00D0A6AA /* Lottie */; };
-		1A882F112FF6373C00D0A6AA /* Lottie-Dynamic in Frameworks */ = {isa = PBXBuildFile; productRef = 1A882F102FF6373C00D0A6AA /* Lottie-Dynamic */; };
 		6F3EE2B82FF16BF600E636A8 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 6F3EE2B72FF16BF600E636A8 /* Kingfisher */; };
+		6F3EE48D2FFA8AA000E636A8 /* MarqueeLabel in Frameworks */ = {isa = PBXBuildFile; productRef = 6F3EE48C2FFA8AA000E636A8 /* MarqueeLabel */; };
 		A1B2C3D42FA34C3300CB972D /* Moya in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D52FA34C3300CB972D /* Moya */; };
 		B4A7D1E52FF036A100F715D2 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = B4A7D1E62FF036A100F715D2 /* Supabase */; };
 /* End PBXBuildFile section */
@@ -31,8 +31,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1A882F112FF6373C00D0A6AA /* Lottie-Dynamic in Frameworks */,
 				6F3EE2B82FF16BF600E636A8 /* Kingfisher in Frameworks */,
+				6F3EE48D2FFA8AA000E636A8 /* MarqueeLabel in Frameworks */,
 				A1B2C3D42FA34C3300CB972D /* Moya in Frameworks */,
 				B4A7D1E52FF036A100F715D2 /* Supabase in Frameworks */,
 				1A882F0F2FF6373C00D0A6AA /* Lottie in Frameworks */,
@@ -82,7 +82,7 @@
 				B4A7D1E62FF036A100F715D2 /* Supabase */,
 				6F3EE2B72FF16BF600E636A8 /* Kingfisher */,
 				1A882F0E2FF6373C00D0A6AA /* Lottie */,
-				1A882F102FF6373C00D0A6AA /* Lottie-Dynamic */,
+				6F3EE48C2FFA8AA000E636A8 /* MarqueeLabel */,
 			);
 			productName = MYLiveRate;
 			productReference = 1A37AC282FA34C3300CB972D /* MYLiveRate.app */;
@@ -122,6 +122,7 @@
 				6F3EE2202FF025F200E636A8 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				6F3EE2B62FF16BF600E636A8 /* XCRemoteSwiftPackageReference "Kingfisher" */,
 				1A882F0D2FF6373C00D0A6AA /* XCRemoteSwiftPackageReference "lottie-ios" */,
+				6F3EE48B2FFA8AA000E636A8 /* XCRemoteSwiftPackageReference "MarqueeLabel" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1A37AC292FA34C3300CB972D /* Products */;
@@ -405,6 +406,14 @@
 				minimumVersion = 8.10.0;
 			};
 		};
+		6F3EE48B2FFA8AA000E636A8 /* XCRemoteSwiftPackageReference "MarqueeLabel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/cbpowell/MarqueeLabel";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.3;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -413,15 +422,15 @@
 			package = 1A882F0D2FF6373C00D0A6AA /* XCRemoteSwiftPackageReference "lottie-ios" */;
 			productName = Lottie;
 		};
-		1A882F102FF6373C00D0A6AA /* Lottie-Dynamic */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1A882F0D2FF6373C00D0A6AA /* XCRemoteSwiftPackageReference "lottie-ios" */;
-			productName = "Lottie-Dynamic";
-		};
 		6F3EE2B72FF16BF600E636A8 /* Kingfisher */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 6F3EE2B62FF16BF600E636A8 /* XCRemoteSwiftPackageReference "Kingfisher" */;
 			productName = Kingfisher;
+		};
+		6F3EE48C2FFA8AA000E636A8 /* MarqueeLabel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6F3EE48B2FFA8AA000E636A8 /* XCRemoteSwiftPackageReference "MarqueeLabel" */;
+			productName = MarqueeLabel;
 		};
 		A1B2C3D52FA34C3300CB972D /* Moya */ = {
 			isa = XCSwiftPackageProductDependency;

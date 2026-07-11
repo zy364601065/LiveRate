@@ -4,6 +4,9 @@
 
 - 用户管理：查看 Supabase Auth 用户、昵称资料、统计记录数量和私有表情数量。
 - 表情管理：维护统计面板 GIF 表情包。App 只读取 Supabase 中可见的表情模式，不再在 App 内新增或上传 GIF。
+- 趋势文案：维护连续亏损、连续盈利、转危为安和风云突变四类统计提示。
+
+首次启用趋势文案前，在 Supabase SQL Editor 执行 `supabase/trend-messages.sql`。脚本会创建 RLS 表并幂等写入 16 条默认文案。
 
 ## 启动
 

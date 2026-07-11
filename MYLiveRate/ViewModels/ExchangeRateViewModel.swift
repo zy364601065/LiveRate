@@ -29,6 +29,7 @@ final class ExchangeRateViewModel: ObservableObject {
     private let networkService = NetworkService()
     private let ocrService = DollarOCRService()
     private let holdingsOCRService = HoldingsOCRService()
+    private let holdingsSyncService = HoldingsSyncService()
     private let statsRecordSyncService = StatsRecordSyncService()
     private let amountTextStorageKey = "myliverate.amount_text.v1"
     private let latestThumbnailStorageKey = "myliverate.latest_upload_thumbnail.v1"
@@ -151,9 +152,34 @@ final class ExchangeRateViewModel: ObservableObject {
             }
 
             addHoldingRecords(holdings)
-            holdingMessage = "已识别持仓 \(holdings.count) 条"
+            holdingMessage = "已识别持仓 \(holdings.count) 条，正在同步"
+            await syncHoldings()
         } catch {
             holdingMessage = "识别持仓失败，请稍后重试"
+        }
+    }
+
+    func syncHoldings() async {
+        do {
+            try await holdingsSyncService.flushPendingDeletes()
+            let remoteRows = try await holdingsSyncService.fetch()
+            let deletedIDs = Set(remoteRows.filter { $0.deletedAt != nil }.map(\.id))
+            for id in deletedIDs {
+                holdingRecords.removeAll { $0.id == id }
+                localRecordsStore.removeHoldingRecord(id: id)
+            }
+
+            let remoteRecords = remoteRows.filter { $0.deletedAt == nil }.map(\.record)
+            var merged = Dictionary(uniqueKeysWithValues: holdingRecords.map { (holdingKey(for: $0), $0) })
+            for record in remoteRecords {
+                merged[holdingKey(for: record)] = record
+            }
+            holdingRecords = Array(merged.values).sorted { $0.timestamp > $1.timestamp }
+            localRecordsStore.mergeHoldingRecords(holdingRecords)
+            try await holdingsSyncService.upsert(holdingRecords)
+            holdingMessage = holdingRecords.isEmpty ? nil : "持仓已同步"
+        } catch {
+            holdingMessage = "持仓已保存在本机，联网后可重试同步"
         }
     }
 
@@ -406,7 +432,18 @@ final class ExchangeRateViewModel: ObservableObject {
 
         for record in records {
             // 新识别到的同名股票会覆盖旧记录，达到“只保留最新一条”的效果
-            mergedByKey[holdingKey(for: record)] = record
+            let key = holdingKey(for: record)
+            if let existing = mergedByKey[key] {
+                mergedByKey[key] = HoldingRecord(
+                    id: existing.id, timestamp: record.timestamp, stockName: record.stockName,
+                    stockCode: record.stockCode, marketValue: record.marketValue, quantity: record.quantity,
+                    currentPrice: record.currentPrice, costPrice: record.costPrice, todayPnL: record.todayPnL,
+                    todayPnLPercent: record.todayPnLPercent, holdingPnL: record.holdingPnL,
+                    holdingPnLPercent: record.holdingPnLPercent
+                )
+            } else {
+                mergedByKey[key] = record
+            }
         }
 
         holdingRecords = Array(mergedByKey.values).sorted { $0.timestamp > $1.timestamp }
@@ -416,6 +453,10 @@ final class ExchangeRateViewModel: ObservableObject {
     func removeHoldingRecord(id: UUID) {
         holdingRecords.removeAll { $0.id == id }
         localRecordsStore.removeHoldingRecord(id: id)
+        Task {
+            do { try await holdingsSyncService.queueAndSoftDelete(id: id) }
+            catch { holdingMessage = "已从本机删除，联网后请重试同步" }
+        }
     }
 
     func updateHoldingName(id: UUID, newName: String) {
@@ -431,7 +472,7 @@ final class ExchangeRateViewModel: ObservableObject {
         let trimmedCode = newCode?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedCode = (trimmedCode?.isEmpty == true) ? nil : trimmedCode
 
-        holdingRecords[index] = HoldingRecord(
+        let updatedRecord = HoldingRecord(
             id: old.id,
             timestamp: old.timestamp,
             stockName: trimmedName,
@@ -445,8 +486,13 @@ final class ExchangeRateViewModel: ObservableObject {
             holdingPnL: old.holdingPnL,
             holdingPnLPercent: old.holdingPnLPercent
         )
+        holdingRecords[index] = updatedRecord
         holdingRecords.sort { $0.timestamp > $1.timestamp }
         localRecordsStore.updateHoldingIdentity(id: id, newName: trimmedName, newCode: normalizedCode)
+        Task {
+            do { try await holdingsSyncService.upsert([updatedRecord]) }
+            catch { holdingMessage = "修改已保存在本机，联网后可重试同步" }
+        }
     }
 
     private func holdingKey(for record: HoldingRecord) -> String {

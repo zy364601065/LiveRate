@@ -1,6 +1,50 @@
 import SwiftUI
 import Charts
 import UIKit
+import MarqueeLabel
+
+private struct MarqueeTextView: UIViewRepresentable {
+    let text: String
+    let font: UIFont
+    let textColor: UIColor
+
+    func makeUIView(context: Context) -> MarqueeLabel {
+        let label = MarqueeLabel(frame: .zero, duration: 7.0, fadeLength: 12.0)
+        label.backgroundColor = .clear
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
+        label.textAlignment = .left
+        label.type = .continuous
+        label.animationDelay = 1.0
+        label.trailingBuffer = 36
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        configure(label)
+        return label
+    }
+
+    func updateUIView(_ label: MarqueeLabel, context: Context) {
+        configure(label)
+        DispatchQueue.main.async {
+            label.restartLabel()
+        }
+    }
+
+    private func configure(_ label: MarqueeLabel) {
+        label.text = text
+        label.font = font
+        label.textColor = textColor
+    }
+}
+
+private extension UIFont {
+    static func roundedSystemFont(ofSize size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        let font = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let descriptor = font.fontDescriptor.withDesign(.rounded) else {
+            return font
+        }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+}
 
 struct StatsDashboardView: View {
     private enum ConsecutiveTrendType {
@@ -93,6 +137,8 @@ struct StatsDashboardView: View {
 
     @ObservedObject var viewModel: ExchangeRateViewModel
     @ObservedObject var statsMoodViewModel: StatsMoodViewModel
+    @ObservedObject var statsFullscreenAnimationViewModel: StatsFullscreenAnimationViewModel
+    @ObservedObject var statsTrendMessageViewModel: StatsTrendMessageViewModel
     @State private var selectedDay = Date()
     @State private var trendPeriod: TrendPeriod = .daily
     @State private var trendChartStyle: TrendChartStyle = .bar
@@ -110,7 +156,10 @@ struct StatsDashboardView: View {
     @State private var displayedConsecutiveTrendHint: ConsecutiveTrendHint?
     @State private var randomizedLuluAssetFileName: String?
     @State private var randomizedCustomAssetID: UUID?
-    @AppStorage(trendHintToneStorageKey) private var trendHintToneRawValue: String = TrendHintTone.wild.rawValue
+    @State private var fullscreenAnimationToPlay: StatsFullscreenAnimation?
+    @State private var playedFullscreenAnimationKeys: Set<String> = []
+    @State private var selectedTrendMessage: StatsTrendMessage?
+    @State private var selectedTrendMessageKey: String?
     @AppStorage(statsMoodModeStorageKey) private var statsMoodModeRawValue: String = StatsMoodMode.standard.rawValue
     @AppStorage(luluMoodBehaviorStorageKey) private var luluMoodBehaviorRawValue: String = LuluMoodBehavior.random.rawValue
     @AppStorage(luluHappyAssetStorageKey) private var luluHappyAssetRawValue: String = LuluHappyAsset.happy1.rawValue
@@ -154,10 +203,6 @@ struct StatsDashboardView: View {
     private static let profitHintQueueStorageKey = "myliverate.stats.profit_hint_queue.v1"
     private static let lossHintQueueStorageKey = "myliverate.stats.loss_hint_queue.v1"
 
-    private var selectedTrendHintTone: TrendHintTone {
-        TrendHintTone(rawValue: trendHintToneRawValue) ?? .wild
-    }
-
     private var selectedStatsMoodMode: StatsMoodMode {
         StatsMoodMode(rawValue: statsMoodModeRawValue) ?? .standard
     }
@@ -174,8 +219,34 @@ struct StatsDashboardView: View {
         LuluBadAsset(rawValue: luluBadAssetRawValue) ?? .bad1
     }
 
+    private var selectedTrendHintTone: TrendHintTone { .wild }
+
     private var selectedCustomMoodMode: CustomStatsMoodMode? {
         statsMoodViewModel.mode(id: customStatsMoodModeID)
+    }
+
+    private var fullscreenTriggerSignature: String {
+        let animationID = statsFullscreenAnimationViewModel.preferredAnimation?.id.uuidString ?? "none"
+        let maxProfitDay = maxProfitDayStat.map { dayKey($0.day) } ?? "none"
+        let maxProfitAmount = maxProfitDayStat.map { String(format: "%.2f", $0.amount) } ?? "none"
+        return [
+            animationID,
+            dayKey(selectedDay),
+            summaryPeriod.rawValue,
+            maxProfitDay,
+            maxProfitAmount
+        ].joined(separator: "|")
+    }
+
+    private var trendMessageSignature: String {
+        let messageIDs = statsTrendMessageViewModel.messages.map(\.id.uuidString).joined(separator: ",")
+        let latestRows = viewModel.dailyLatestRecords.suffix(8).map {
+            "\(dayKey($0.day)):\(String(format: "%.2f", $0.record.usdAmount))"
+        }.joined(separator: ",")
+        return [
+            latestRows,
+            messageIDs
+        ].joined(separator: "|")
     }
 
     private func maskedNumericText(_ text: String) -> String {
@@ -805,6 +876,62 @@ struct StatsDashboardView: View {
         return rows.filter { calendar.isDate($0.day, equalTo: displayedMonth, toGranularity: .month) }
     }
 
+    private var currentMonthNetAssetRows: [DailyAmountRow] {
+        currentMonthRows.sorted {
+            if marketCalendar.isDate($0.day, inSameDayAs: $1.day) {
+                return $0.sourceTime < $1.sourceTime
+            }
+            return $0.day < $1.day
+        }
+    }
+
+    private var currentMonthHighDaysCount: Int {
+        var highestAsset: Double?
+        var highDays = 0
+
+        for row in currentMonthNetAssetRows {
+            if let currentHighest = highestAsset {
+                if row.convertedAmount > currentHighest {
+                    highDays += 1
+                    highestAsset = row.convertedAmount
+                }
+            } else {
+                highDays = 1
+                highestAsset = row.convertedAmount
+            }
+        }
+
+        return highDays
+    }
+
+    private var currentMonthMaxDrawdownStat: (amount: Double, percent: Double)? {
+        let assetRows = currentMonthNetAssetRows
+        guard assetRows.count >= 2 else { return nil }
+
+        var peak = assetRows[0].convertedAmount
+        var maxDrawdownAmount = 0.0
+        var maxDrawdownPercent = 0.0
+
+        for row in assetRows.dropFirst() {
+            let asset = row.convertedAmount
+            if asset > peak {
+                peak = asset
+                continue
+            }
+
+            guard peak != 0 else { continue }
+            let drawdownAmount = asset - peak
+            let drawdownPercent = drawdownAmount / abs(peak) * 100
+            if drawdownPercent < maxDrawdownPercent {
+                maxDrawdownAmount = drawdownAmount
+                maxDrawdownPercent = drawdownPercent
+            }
+        }
+
+        guard maxDrawdownPercent < 0 else { return nil }
+        return (amount: maxDrawdownAmount, percent: maxDrawdownPercent)
+    }
+
     private func calendarMood(for date: Date) -> KeyStatMood? {
         guard let amount = amountValue(for: date) else {
             return nil
@@ -1030,11 +1157,26 @@ struct StatsDashboardView: View {
             return ("本月vs上月", "\(deltaText) / \(percentText)", tone)
         }()
 
+        let highDays: (String, String, Color) = {
+            let count = currentMonthHighDaysCount
+            let tone: Color = count > 0 ? positiveColor : .secondary
+            return ("本月", "\(count)天", tone)
+        }()
+
+        let drawdown: (String, String, Color) = {
+            guard let stat = currentMonthMaxDrawdownStat else {
+                return ("本月", "--", .secondary)
+            }
+            return ("本月", "\(compactAmountText(stat.amount)) / \(percentText(stat.percent))", negativeColor)
+        }()
+
         let rawItems = [
             KeyStatItem(title: "最大盈利日", day: profit.0, amount: profit.1, tone: positiveColor),
             KeyStatItem(title: "最大亏损日", day: loss.0, amount: loss.1, tone: negativeColor),
             KeyStatItem(title: "胜率", day: winRate.0, amount: winRate.1, tone: winRate.2),
-            KeyStatItem(title: "环比变化", day: monthVsMonth.0, amount: monthVsMonth.1, tone: monthVsMonth.2)
+            KeyStatItem(title: "环比变化", day: monthVsMonth.0, amount: monthVsMonth.1, tone: monthVsMonth.2),
+            KeyStatItem(title: "资产创新高天数", day: highDays.0, amount: highDays.1, tone: highDays.2),
+            KeyStatItem(title: "最大回撤", day: drawdown.0, amount: drawdown.1, tone: drawdown.2)
         ]
 
         guard hideStatsNumbers else { return rawItems }
@@ -1057,6 +1199,10 @@ struct StatsDashboardView: View {
         return value >= 0 ? "+\(absText)" : "-\(absText)"
     }
 
+    private func percentText(_ value: Double) -> String {
+        String(format: "%+.2f%%", value)
+    }
+
     private var summaryTitleText: String {
         switch summaryPeriod {
         case .currentWeek:
@@ -1075,6 +1221,48 @@ struct StatsDashboardView: View {
     private var summaryMainAmountText: String {
         guard !hideStatsNumbers else { return hiddenValueMask }
         return viewModel.formatAmount(summaryMainAmount, currency: viewModel.statsDisplayCurrency)
+    }
+
+    private var totalPositionUSD: Double? {
+        let values = viewModel.holdingRecords.compactMap(\.marketValue)
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +)
+    }
+
+    private var totalTodayPnLUSD: Double? {
+        let values = viewModel.holdingRecords.compactMap(\.todayPnL)
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +)
+    }
+
+    private var totalPositionValue: Double? {
+        guard let totalPositionUSD else { return nil }
+        return viewModel.convertedFromUSD(totalPositionUSD, to: viewModel.statsDisplayCurrency)
+    }
+
+    private var totalTodayPnLPercent: Double? {
+        guard let marketValue = totalPositionUSD,
+              let todayPnL = totalTodayPnLUSD else { return nil }
+        let previousCloseValue = marketValue - todayPnL
+        guard previousCloseValue > 0 else { return nil }
+        return todayPnL / previousCloseValue * 100
+    }
+
+    private var totalPositionAmountText: String {
+        guard !hideStatsNumbers else { return "******" }
+        guard let value = totalPositionValue else { return "--" }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        let number = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+        return "\(viewModel.statsDisplayCurrency.symbol)\(number)"
+    }
+
+    private var totalPositionPercentText: String {
+        guard !hideStatsNumbers else { return "--%" }
+        guard let value = totalTodayPnLPercent else { return "--%" }
+        return String(format: "(%+.2f%%)", value)
     }
 
     private var currentWeekRange: (start: Date, end: Date) {
@@ -1375,6 +1563,17 @@ struct StatsDashboardView: View {
         NavigationStack {
             mainScrollView
         }
+        .overlay {
+            if let animation = fullscreenAnimationToPlay {
+                FullscreenDotLottieOverlay(animation: animation) {
+                    markFullscreenAnimationPlayed(animation)
+                } onDismiss: {
+                    fullscreenAnimationToPlay = nil
+                }
+                .transition(.opacity)
+                .zIndex(20)
+            }
+        }
     }
 
     private var titleHeader: some View {
@@ -1405,6 +1604,35 @@ struct StatsDashboardView: View {
         }
     }
 
+    private func trendMessageCard(_ message: StatsTrendMessage) -> some View {
+        let isNegative = message.trigger == .consecutiveLoss || message.trigger == .profitToLoss
+        let accent = isNegative ? negativeColor : positiveColor
+        let uiAccent = isNegative
+            ? UIColor(red: 0.12, green: 0.72, blue: 0.67, alpha: 1)
+            : UIColor(red: 0.93, green: 0.19, blue: 0.23, alpha: 1)
+
+        return MarqueeTextView(
+            text: message.message,
+            font: .roundedSystemFont(ofSize: 16, weight: .heavy),
+            textColor: uiAccent
+        )
+        .frame(height: 22)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 42, maxHeight: 42, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(accent.opacity(0.10))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(accent.opacity(0.34), lineWidth: 1)
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message.message)
+    }
+
     private var statsNumberPrivacyToggle: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -1429,6 +1657,9 @@ struct StatsDashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 titleHeader
+                if let selectedTrendMessage {
+                    trendMessageCard(selectedTrendMessage)
+                }
                 calendarSection
                 summarySection
                 keyStatsSection
@@ -1442,6 +1673,12 @@ struct StatsDashboardView: View {
         .navigationTitle("统计")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: handleOnAppear)
+        .onChange(of: fullscreenTriggerSignature) { _, _ in
+            evaluateFullscreenAnimationTrigger()
+        }
+        .onChange(of: trendMessageSignature) { _, _ in
+            refreshTrendMessage()
+        }
         .onChange(of: trendPeriod) { _, newValue in
             handleTrendPeriodChange(newValue)
         }
@@ -1457,6 +1694,7 @@ struct StatsDashboardView: View {
         }
         .onChange(of: selectedDay) { _, _ in
             refreshSelectedLuluAsset()
+            refreshTrendMessage()
         }
         .onChange(of: statsMoodModeRawValue) { _, _ in
             refreshSelectedLuluAsset()
@@ -1493,7 +1731,7 @@ struct StatsDashboardView: View {
     }
 
     private func handleOnAppear() {
-        refreshConsecutiveTrendHint()
+        refreshTrendMessage()
         guard !hasInitializedSelection else { return }
         hasInitializedSelection = true
 
@@ -1506,6 +1744,8 @@ struct StatsDashboardView: View {
         }
 
         refreshSelectedLuluAsset()
+        evaluateFullscreenAnimationTrigger()
+        refreshTrendMessage()
         
         DispatchQueue.main.async {
             self.alignSelectedDailySlotToLatest()
@@ -1528,6 +1768,109 @@ struct StatsDashboardView: View {
         } else if trendPeriod == .monthly {
             alignSelectedMonthlySlotToLatest()
         }
+    }
+
+    private func evaluateFullscreenAnimationTrigger() {
+        guard fullscreenAnimationToPlay == nil else {
+            print("[StatsFullscreen] skip trigger: animation already presented")
+            return
+        }
+        guard let animation = statsFullscreenAnimationViewModel.preferredAnimation else {
+            print("[StatsFullscreen] skip trigger: no preferred animation")
+            return
+        }
+        guard animation.signedURL != nil else {
+            print("[StatsFullscreen] skip trigger: animation has no signed URL id=\(animation.id.uuidString)")
+            return
+        }
+        guard let maxProfitDayStat, maxProfitDayStat.amount > 0 else {
+            print("[StatsFullscreen] skip trigger: no positive max profit day")
+            return
+        }
+        guard marketCalendar.isDate(selectedDay, inSameDayAs: maxProfitDayStat.day) else {
+            print("[StatsFullscreen] skip trigger: selectedDay=\(dayKey(selectedDay)) is not maxProfitDay=\(dayKey(maxProfitDayStat.day))")
+            return
+        }
+        let playbackKey = fullscreenPlaybackKey(animationID: animation.id, day: maxProfitDayStat.day)
+        guard !playedFullscreenAnimationKeys.contains(playbackKey) else {
+            print("[StatsFullscreen] skip trigger: already played this launch key=\(playbackKey)")
+            return
+        }
+
+        fullscreenAnimationToPlay = animation
+        print("[StatsFullscreen] presenting animation id=\(animation.id.uuidString), day=\(dayKey(maxProfitDayStat.day)), period=\(summaryPeriod.rawValue)")
+    }
+
+    private func refreshTrendMessage(forceRandomize: Bool = false) {
+        guard let (trigger, latestDay) = latestTrendTrigger() else {
+            selectedTrendMessage = nil
+            selectedTrendMessageKey = nil
+            return
+        }
+
+        let key = "\(trigger.rawValue).\(dayKey(latestDay))"
+
+        guard forceRandomize || selectedTrendMessageKey != key else {
+            return
+        }
+
+        let previousMessageID = selectedTrendMessage?.id
+        selectedTrendMessageKey = key
+        selectedTrendMessage = statsTrendMessageViewModel.randomMessage(for: trigger, excluding: previousMessageID)
+    }
+
+    private func latestTrendTrigger() -> (StatsTrendTrigger, Date)? {
+        let records = viewModel.dailyLatestRecords.sorted { $0.day > $1.day }
+        guard records.count >= 2 else { return nil }
+        let today = records[0]
+        let yesterday = records[1]
+        let todayAmount = today.record.usdAmount
+        let yesterdayAmount = yesterday.record.usdAmount
+
+        if yesterdayAmount < 0, todayAmount >= 0 {
+            return (.lossToProfit, today.day)
+        }
+        if yesterdayAmount > 0, todayAmount < 0 {
+            return (.profitToLoss, today.day)
+        }
+        if yesterdayAmount > 0, todayAmount > 0 {
+            return (.consecutiveProfit, today.day)
+        }
+        if yesterdayAmount < 0, todayAmount < 0 {
+            return (.consecutiveLoss, today.day)
+        }
+        return nil
+    }
+
+    private func markFullscreenAnimationPlayed(_ animation: StatsFullscreenAnimation) {
+        guard let maxProfitDayStat else { return }
+        let playbackKey = fullscreenPlaybackKey(animationID: animation.id, day: maxProfitDayStat.day)
+        playedFullscreenAnimationKeys.insert(playbackKey)
+        print("[StatsFullscreen] marked played key=\(playbackKey)")
+    }
+
+    private func fullscreenPlaybackKey(animationID: UUID, day: Date) -> String {
+        [
+            animationID.uuidString,
+            dayKey(day),
+            summaryPeriod.rawValue
+        ].joined(separator: ".")
+    }
+
+    private func dayKey(_ day: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = marketCalendar.timeZone
+        formatter.dateFormat = "yyyyMMdd"
+        return formatter.string(from: day)
+    }
+
+    private func localDayKey(_ day: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.timeZone = localDisplayCalendar.timeZone
+        formatter.dateFormat = "yyyyMMdd"
+        return formatter.string(from: day)
     }
 
     private var currencyMenu: some View {
@@ -2143,6 +2486,30 @@ struct StatsDashboardView: View {
 
     private var summarySection: some View {
         VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("总仓位")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(subtitleColor)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(totalPositionAmountText)
+                            .font(.system(size: 25, weight: .bold, design: .rounded))
+                            .foregroundStyle(accentBlue)
+                            .monospacedDigit()
+                        Text(hideStatsNumbers ? "今日 --%" : "今日 \(totalPositionPercentText)")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(hideStatsNumbers ? subtitleColor : signedAmountColor(totalTodayPnLPercent ?? 0, zeroColor: subtitleColor))
+                            .monospacedDigit()
+                    }
+                }
+                Spacer()
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("总仓位")
+            .accessibilityValue(hideStatsNumbers ? "资产数据已隐藏" : "\(totalPositionAmountText)，今日盈亏 \(totalPositionPercentText)")
+
+            Divider()
+
             HStack(alignment: .center) {
                 Text(summaryTitleText)
                     .font(.system(size: 21, weight: .bold, design: .rounded))
@@ -2164,26 +2531,6 @@ struct StatsDashboardView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.64)
 
-            if let hint = displayedConsecutiveTrendHint {
-                let hintToneColor = hideStatsNumbers ? subtitleColor : hint.accentColor
-                let hintBackgroundColor = hideStatsNumbers ? Color.gray.opacity(0.10) : hint.backgroundColor
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: hint.symbolName)
-                        Text(hint.message)
-                            .lineLimit(2)
-                    }
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(hintToneColor)
-                    Text(hideStatsNumbers ? "已连续****天" : hint.detail)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(hintToneColor)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(hintBackgroundColor, in: RoundedRectangle(cornerRadius: 10))
-                .padding(.top, 2)
-            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

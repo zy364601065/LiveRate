@@ -139,6 +139,7 @@ struct StatsDashboardView: View {
     @ObservedObject var statsMoodViewModel: StatsMoodViewModel
     @ObservedObject var statsFullscreenAnimationViewModel: StatsFullscreenAnimationViewModel
     @ObservedObject var statsTrendMessageViewModel: StatsTrendMessageViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedDay = Date()
     @State private var trendPeriod: TrendPeriod = .daily
     @State private var trendChartStyle: TrendChartStyle = .bar
@@ -345,6 +346,48 @@ struct StatsDashboardView: View {
 
     private var rows: [DailyAmountRow] {
         viewModel.dailyAmountRows(for: viewModel.statsDisplayCurrency)
+    }
+
+    private var settlementCalendarRows: [DailyAmountRow] {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = marketCalendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return viewModel.holdingDailySettlements.compactMap { settlement in
+            guard let day = formatter.date(from: settlement.tradingDate),
+                  let amount = viewModel.convertedFromUSD(settlement.regularPnL, to: viewModel.statsDisplayCurrency) else { return nil }
+            return DailyAmountRow(day: day, convertedAmount: amount, sourceTime: settlement.quoteAt, currency: viewModel.statsDisplayCurrency)
+        }
+    }
+
+    /// Calendar precedence: manual values are authoritative, regular-session settlements
+    /// fill historical gaps, and only a live regular-session quote may fill today.
+    private var hybridCalendarRows: [DailyAmountRow] {
+        var rowsByDay: [Date: DailyAmountRow] = [:]
+
+        for row in settlementCalendarRows {
+            rowsByDay[marketCalendar.startOfDay(for: row.day)] = row
+        }
+
+        if viewModel.portfolioMarketSession == .regular,
+           let livePnL = portfolioMetrics(for: .regular).pnl,
+           let converted = viewModel.convertedFromUSD(livePnL, to: viewModel.statsDisplayCurrency) {
+            let today = marketCalendar.startOfDay(for: Date())
+            rowsByDay[today] = DailyAmountRow(
+                day: today,
+                convertedAmount: converted,
+                sourceTime: viewModel.portfolioQuoteAt ?? Date(),
+                currency: viewModel.statsDisplayCurrency
+            )
+        }
+
+        // Apply manual uploads last so they remain the user's verified source of truth.
+        for row in rows {
+            rowsByDay[marketCalendar.startOfDay(for: row.day)] = row
+        }
+
+        return rowsByDay.values.sorted { $0.day < $1.day }
     }
 
     private func signedAmountColor(_ value: Double, zeroColor: Color = .secondary) -> Color {
@@ -791,7 +834,7 @@ struct StatsDashboardView: View {
     }
 
     private var monthAmountMap: [Date: Double] {
-        Dictionary(uniqueKeysWithValues: rows.map {
+        Dictionary(uniqueKeysWithValues: hybridCalendarRows.map {
             (marketCalendar.startOfDay(for: $0.day), $0.convertedAmount)
         })
     }
@@ -1241,6 +1284,7 @@ struct StatsDashboardView: View {
     }
 
     private var totalTodayPnLPercent: Double? {
+        if let regularPercent = portfolioMetrics(for: .regular).percent { return regularPercent }
         guard let marketValue = totalPositionUSD,
               let todayPnL = totalTodayPnLUSD else { return nil }
         let previousCloseValue = marketValue - todayPnL
@@ -1263,6 +1307,44 @@ struct StatsDashboardView: View {
         guard !hideStatsNumbers else { return "--%" }
         guard let value = totalTodayPnLPercent else { return "--%" }
         return String(format: "(%+.2f%%)", value)
+    }
+
+    private func portfolioQuote(for record: HoldingRecord, session: TradingSessionType) -> PortfolioSessionQuote? {
+        guard let symbol = record.stockCode?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+              !symbol.isEmpty,
+              let sessions = viewModel.portfolioQuotesBySymbol[symbol] else { return nil }
+        switch session {
+        case .afterHours: return sessions.afterHours
+        case .overnight: return sessions.overnight
+        case .preMarket: return sessions.preMarket
+        case .regular: return sessions.regular
+        }
+    }
+
+    private func portfolioMetrics(for session: TradingSessionType) -> (pnl: Double?, percent: Double?) {
+        var totalChange = 0.0
+        var totalBaseline = 0.0
+        var hasData = false
+        for record in viewModel.holdingRecords {
+            guard let quantity = record.quantity,
+                  let quote = portfolioQuote(for: record, session: session),
+                  quote.isAvailable,
+                  let change = quote.changeAmount,
+                  let baseline = quote.baselinePrice,
+                  baseline > 0 else { continue }
+            totalChange += change * quantity
+            totalBaseline += baseline * quantity
+            hasData = true
+        }
+        guard hasData, totalBaseline > 0 else { return (nil, nil) }
+        return (totalChange, totalChange / totalBaseline * 100)
+    }
+
+    private var sessionMetricColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
+            count: horizontalSizeClass == .regular ? 3 : 1
+        )
     }
 
     private var currentWeekRange: (start: Date, end: Date) {
@@ -2496,17 +2578,28 @@ struct StatsDashboardView: View {
                             .font(.system(size: 25, weight: .bold, design: .rounded))
                             .foregroundStyle(accentBlue)
                             .monospacedDigit()
-                        Text(hideStatsNumbers ? "今日 --%" : "今日 \(totalPositionPercentText)")
+                        Text(hideStatsNumbers ? "盘中/收盘 --%" : "盘中/收盘 \(totalPositionPercentText)")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(hideStatsNumbers ? subtitleColor : signedAmountColor(totalTodayPnLPercent ?? 0, zeroColor: subtitleColor))
                             .monospacedDigit()
+                    }
+                    if let quoteAt = viewModel.portfolioQuoteAt {
+                        Text("更新于 \(timeFormatter.string(from: quoteAt))\(viewModel.portfolioQuoteIsStale ? " · 数据可能延迟" : "")")
+                            .font(.caption2)
+                            .foregroundStyle(subtitleColor)
                     }
                 }
                 Spacer()
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("总仓位")
-            .accessibilityValue(hideStatsNumbers ? "资产数据已隐藏" : "\(totalPositionAmountText)，今日盈亏 \(totalPositionPercentText)")
+            .accessibilityValue(hideStatsNumbers ? "资产数据已隐藏" : "\(totalPositionAmountText)，盘中或收盘盈亏 \(totalPositionPercentText)")
+
+            LazyVGrid(columns: sessionMetricColumns, alignment: .leading, spacing: 8) {
+                portfolioSessionMetric(title: "盘后", session: .afterHours)
+                portfolioSessionMetric(title: "夜盘", session: .overnight)
+                portfolioSessionMetric(title: "盘前", session: .preMarket)
+            }
 
             Divider()
 
@@ -2535,6 +2628,51 @@ struct StatsDashboardView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(glassCardBackground(cornerRadius: 28))
+    }
+
+    private func portfolioSessionMetric(title: String, session: TradingSessionType) -> some View {
+        let metrics = portfolioMetrics(for: session)
+        let amount = metrics.pnl.flatMap { viewModel.convertedFromUSD($0, to: viewModel.statsDisplayCurrency) }
+        let valueColor = signedRuleColor(metrics.percent)
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(subtitleColor)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if hideStatsNumbers {
+                Text("--%")
+                    .font(.system(.body, design: .rounded, weight: .bold))
+                    .foregroundStyle(subtitleColor)
+                    .monospacedDigit()
+            } else if let amount, let percent = metrics.percent {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(viewModel.formatAmount(amount, currency: viewModel.statsDisplayCurrency))
+                    Text(percentText(percent))
+                }
+                .font(.system(.body, design: .rounded, weight: .bold))
+                .foregroundStyle(valueColor)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            } else {
+                Text("--%")
+                    .font(.system(.body, design: .rounded, weight: .bold))
+                    .foregroundStyle(subtitleColor)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title)盈亏")
+        .accessibilityValue(
+            hideStatsNumbers
+                ? "资产数据已隐藏"
+                : amount.flatMap { amountValue in metrics.percent.map { "\(viewModel.formatAmount(amountValue, currency: viewModel.statsDisplayCurrency))，\(percentText($0))" } } ?? "无数据"
+        )
     }
 
     private var keyStatsSection: some View {

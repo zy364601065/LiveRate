@@ -8,6 +8,7 @@ struct HoldingsTabView: View {
     @State private var editingHoldingID: UUID?
     @State private var draftName = ""
     @State private var draftCode = ""
+    @State private var analysisRecord: HoldingRecord?
     private let pageBackgroundTop = Color(uiColor: UIColor { trait in
         trait.userInterfaceStyle == .dark
             ? UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
@@ -55,9 +56,9 @@ struct HoldingsTabView: View {
             .background(pageBackground.ignoresSafeArea())
             .navigationTitle("持仓明细")
             .navigationBarTitleDisplayMode(.inline)
-            .task {
-                await viewModel.syncHoldings()
-            }
+        }
+        .sheet(item: $analysisRecord) { record in
+            StockAnalysisView(record: record)
         }
     }
 
@@ -208,6 +209,13 @@ struct HoldingsTabView: View {
 
                 Menu {
                     Button {
+                        analysisRecord = record
+                    } label: {
+                        Label("AI 分析", systemImage: "sparkles")
+                    }
+                    .disabled(secondaryCode(record) == nil)
+
+                    Button {
                         editingHoldingID = record.id
                         draftName = primaryName(record)
                         draftCode = secondaryCode(record) ?? ""
@@ -243,9 +251,9 @@ struct HoldingsTabView: View {
                     )
                     holdingMetric(
                         title: "今日盈亏",
-                        primary: formattedSigned(record.todayPnL),
-                        secondary: formattedPercent(record.todayPnLPercent),
-                        tint: signedColor(record.todayPnL),
+                        primary: formattedSigned(sessionPnL(record, session: .regular) ?? record.todayPnL),
+                        secondary: formattedPercent(sessionPercent(record, session: .regular) ?? record.todayPnLPercent),
+                        tint: signedColor(sessionPnL(record, session: .regular) ?? record.todayPnL),
                         isSemanticValue: true
                     )
 
@@ -261,6 +269,9 @@ struct HoldingsTabView: View {
                         tint: signedColor(record.holdingPnL),
                         isSemanticValue: true
                     )
+                    sessionMetric(record, title: "盘后盈亏", session: .afterHours)
+                    sessionMetric(record, title: "夜盘盈亏", session: nil)
+                    sessionMetric(record, title: "盘前盈亏", session: .preMarket)
                 }
             }
         }
@@ -268,6 +279,33 @@ struct HoldingsTabView: View {
         .padding(.vertical, 22)
         .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: Color.black.opacity(0.055), radius: 14, y: 5)
+    }
+
+    private func sessionMetric(_ record: HoldingRecord, title: String, session: PortfolioMarketSession?) -> some View {
+        let pnl = session.flatMap { sessionPnL(record, session: $0) }
+        let percent = session.flatMap { sessionPercent(record, session: $0) }
+        return holdingMetric(
+            title: title,
+            primary: formattedSigned(pnl),
+            secondary: formattedPercent(percent),
+            tint: signedColor(pnl),
+            isSemanticValue: true
+        )
+    }
+
+    private func sessionQuote(_ record: HoldingRecord, session: PortfolioMarketSession) -> PortfolioSessionQuote? {
+        guard let symbol = secondaryCode(record)?.uppercased(),
+              let sessions = viewModel.portfolioQuotesBySymbol[symbol] else { return nil }
+        switch session { case .preMarket: return sessions.preMarket; case .regular: return sessions.regular; case .afterHours: return sessions.afterHours; case .closed: return nil }
+    }
+
+    private func sessionPnL(_ record: HoldingRecord, session: PortfolioMarketSession) -> Double? {
+        guard let quantity = record.quantity, let change = sessionQuote(record, session: session)?.changeAmount else { return nil }
+        return quantity * change
+    }
+
+    private func sessionPercent(_ record: HoldingRecord, session: PortfolioMarketSession) -> Double? {
+        sessionQuote(record, session: session)?.changePercent
     }
 
     private var avatarColor: Color {

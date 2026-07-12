@@ -24,6 +24,14 @@ final class ExchangeRateViewModel: ObservableObject {
     @Published var isRecognizingHolding = false
     @Published var holdingMessage: String?
     @Published var holdingRecords: [HoldingRecord] = []
+    @Published var portfolioMarketSession: PortfolioMarketSession = .closed
+    @Published var portfolioSessionPercent: Double?
+    @Published var portfolioSessionPnLUSD: Double?
+    @Published var portfolioQuoteProvider: String?
+    @Published var portfolioQuoteAt: Date?
+    @Published var portfolioQuoteIsStale = false
+    @Published var holdingDailySettlements: [HoldingDailySettlement] = []
+    @Published var portfolioQuotesBySymbol: [String: PortfolioSessionQuotes] = [:]
 
     private let localRecordsStore: LocalRecordsStore
     private let networkService = NetworkService()
@@ -33,6 +41,8 @@ final class ExchangeRateViewModel: ObservableObject {
     private let statsRecordSyncService = StatsRecordSyncService()
     private let amountTextStorageKey = "myliverate.amount_text.v1"
     private let latestThumbnailStorageKey = "myliverate.latest_upload_thumbnail.v1"
+    private let pendingHoldingUpsertsStorageKey = "myliverate.holdings.pending_upserts.v1"
+    private var isSyncingHoldings = false
     private static let usMarketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
 
     init(localRecordsStore: LocalRecordsStore) {
@@ -152,34 +162,89 @@ final class ExchangeRateViewModel: ObservableObject {
             }
 
             addHoldingRecords(holdings)
-            holdingMessage = "已识别持仓 \(holdings.count) 条，正在同步"
-            await syncHoldings()
+            print("[持仓同步] OCR 已保存到本地：识别=\(holdings.count)，本地总数=\(holdingRecords.count)，待上传=\(pendingHoldingUpsertIDs.count)")
+            holdingMessage = "已识别持仓 \(holdings.count) 条，已保存在本机"
+            // Cloud persistence is deliberately fire-and-forget. Local SwiftData is
+            // the source of truth for the current session and must never wait for or
+            // be replaced by a remote response.
+            Task { await syncHoldings() }
         } catch {
             holdingMessage = "识别持仓失败，请稍后重试"
         }
     }
 
     func syncHoldings() async {
+        guard !isSyncingHoldings else {
+            print("[持仓同步] 已跳过重复的同步请求")
+            return
+        }
+        isSyncingHoldings = true
+        defer { isSyncingHoldings = false }
+
+        print("[持仓同步] 开始同步：本地数量=\(holdingRecords.count)，待上传数量=\(pendingHoldingUpsertIDs.count)")
+
         do {
             try await holdingsSyncService.flushPendingDeletes()
-            let remoteRows = try await holdingsSyncService.fetch()
-            let deletedIDs = Set(remoteRows.filter { $0.deletedAt != nil }.map(\.id))
-            for id in deletedIDs {
-                holdingRecords.removeAll { $0.id == id }
-                localRecordsStore.removeHoldingRecord(id: id)
+        } catch {
+            // A stale delete must never block uploading newly recognized holdings.
+            print("[持仓同步] 待删除记录重试失败，但将继续上传持仓：错误=\(String(reflecting: error))")
+        }
+
+        do {
+            // Remote data is only a recovery source for a genuinely empty device.
+            // Once local records exist, never merge a remote snapshot back into them.
+            if holdingRecords.isEmpty {
+                let remoteRows = try await holdingsSyncService.fetch()
+                print("[持仓同步] 本地为空，已读取云端记录：数量=\(remoteRows.count)")
+                let recovered = remoteRows.filter { $0.deletedAt == nil }.map(\.record)
+                if !recovered.isEmpty {
+                    holdingRecords = recovered.sorted { $0.timestamp > $1.timestamp }
+                    localRecordsStore.mergeHoldingRecords(recovered)
+                }
             }
 
-            let remoteRecords = remoteRows.filter { $0.deletedAt == nil }.map(\.record)
-            var merged = Dictionary(uniqueKeysWithValues: holdingRecords.map { (holdingKey(for: $0), $0) })
-            for record in remoteRecords {
-                merged[holdingKey(for: record)] = record
-            }
-            holdingRecords = Array(merged.values).sorted { $0.timestamp > $1.timestamp }
-            localRecordsStore.mergeHoldingRecords(holdingRecords)
-            try await holdingsSyncService.upsert(holdingRecords)
+            guard !holdingRecords.isEmpty else { return }
+            let recordsBeingUploaded = holdingRecords
+            let uploadedIDs = Set(recordsBeingUploaded.map(\.id))
+            try await holdingsSyncService.upsert(recordsBeingUploaded)
+            // A new OCR import can arrive while the network request is suspended.
+            // Only acknowledge IDs included in this successful request.
+            pendingHoldingUpsertIDs.subtract(uploadedIDs)
+            print("[持仓同步] 同步完成：已上传=\(uploadedIDs.count)，剩余待上传=\(pendingHoldingUpsertIDs.count)")
             holdingMessage = holdingRecords.isEmpty ? nil : "持仓已同步"
         } catch {
+            print("[持仓同步] 同步失败，本地数据已保留：本地数量=\(holdingRecords.count)，错误=\(String(reflecting: error))")
             holdingMessage = "持仓已保存在本机，联网后可重试同步"
+        }
+    }
+
+    func refreshPortfolioMarketData() async {
+        guard !holdingRecords.isEmpty else { return }
+        do {
+            let response = try await holdingsSyncService.refreshPortfolioQuotes()
+            portfolioMarketSession = response.session
+            portfolioQuoteAt = response.refreshedAt
+            portfolioQuotesBySymbol = Dictionary(uniqueKeysWithValues: response.items.map { ($0.symbol, $0.sessions) })
+            let activeQuotes = response.items.compactMap { $0.sessions.quote(for: response.session) }
+            portfolioQuoteProvider = Array(Set(activeQuotes.compactMap(\.provider))).sorted().joined(separator: " / ")
+            portfolioQuoteIsStale = activeQuotes.contains { $0.isStale == true }
+            var quantities: [String: Double] = [:]
+            for record in holdingRecords {
+                guard let symbol = record.stockCode?.uppercased(), let quantity = record.quantity else { continue }
+                quantities[symbol, default: 0] += quantity
+            }
+            let totals = response.items.reduce(into: (change: 0.0, baseline: 0.0)) { result, item in
+                guard let quantity = quantities[item.symbol] else { return }
+                guard let quote = item.sessions.quote(for: response.session),
+                      let change = quote.changeAmount, let baseline = quote.baselinePrice else { return }
+                result.change += change * quantity
+                result.baseline += baseline * quantity
+            }
+            portfolioSessionPercent = totals.baseline > 0 ? totals.change / totals.baseline * 100 : nil
+            portfolioSessionPnLUSD = totals.baseline > 0 ? totals.change : nil
+            holdingDailySettlements = try await holdingsSyncService.fetchDailySettlements()
+        } catch {
+            holdingMessage = "行情刷新失败，继续显示最近持仓数据"
         }
     }
 
@@ -447,14 +512,20 @@ final class ExchangeRateViewModel: ObservableObject {
         }
 
         holdingRecords = Array(mergedByKey.values).sorted { $0.timestamp > $1.timestamp }
+        pendingHoldingUpsertIDs.formUnion(holdingRecords.map(\.id))
         localRecordsStore.mergeHoldingRecords(records)
     }
 
     func removeHoldingRecord(id: UUID) {
+        let sourceKey = holdingRecords.first(where: { $0.id == id }).map(holdingKey(for:))
+        pendingHoldingUpsertIDs.remove(id)
         holdingRecords.removeAll { $0.id == id }
         localRecordsStore.removeHoldingRecord(id: id)
         Task {
-            do { try await holdingsSyncService.queueAndSoftDelete(id: id) }
+            do {
+                guard let sourceKey else { throw CocoaError(.fileNoSuchFile) }
+                try await holdingsSyncService.queueAndSoftDelete(id: id, sourceKey: sourceKey)
+            }
             catch { holdingMessage = "已从本机删除，联网后请重试同步" }
         }
     }
@@ -489,6 +560,7 @@ final class ExchangeRateViewModel: ObservableObject {
         holdingRecords[index] = updatedRecord
         holdingRecords.sort { $0.timestamp > $1.timestamp }
         localRecordsStore.updateHoldingIdentity(id: id, newName: trimmedName, newCode: normalizedCode)
+        pendingHoldingUpsertIDs.insert(id)
         Task {
             do { try await holdingsSyncService.upsert([updatedRecord]) }
             catch { holdingMessage = "修改已保存在本机，联网后可重试同步" }
@@ -506,6 +578,15 @@ final class ExchangeRateViewModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .replacingOccurrences(of: " ", with: "")
+    }
+
+    private var pendingHoldingUpsertIDs: Set<UUID> {
+        get {
+            Set((UserDefaults.standard.stringArray(forKey: pendingHoldingUpsertsStorageKey) ?? []).compactMap(UUID.init(uuidString:)))
+        }
+        set {
+            UserDefaults.standard.set(newValue.map(\.uuidString), forKey: pendingHoldingUpsertsStorageKey)
+        }
     }
 
 }

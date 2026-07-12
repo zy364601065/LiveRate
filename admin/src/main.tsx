@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-type SectionKey = "users" | "moods" | "fullscreen" | "birthdayAnimations" | "messages";
+type SectionKey = "users" | "moods" | "fullscreen" | "birthdayAnimations" | "messages" | "ai";
 type MoodScope = "global" | "user";
 type MoodBehavior = "random" | "manual";
 type AssetKind = "default" | "profit" | "loss";
@@ -132,6 +132,8 @@ type ExtremeDayMessageDraft = {
   sortOrder: number;
 };
 
+type AIConfigStatus = { configured: boolean; ready: boolean; models: Array<{ model: string; isPrimary: boolean }> };
+
 const passwordStorageKey = "myliverate.mood_admin.password";
 
 function App() {
@@ -168,6 +170,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [aiStatus, setAIStatus] = useState<AIConfigStatus | null>(null);
 
   const selectedMode = modes.find((mode) => mode.id === selectedModeID) ?? modes[0] ?? null;
   const activeFullscreenTriggerType: FullscreenAnimationTriggerType = activeSection === "birthdayAnimations" ? "birthday_home" : "max_profit_day";
@@ -269,6 +272,35 @@ function App() {
     return payload as T;
   }
 
+  async function loadAIStatus() {
+    setIsLoading(true);
+    try { setAIStatus(await api<AIConfigStatus>("/api/ai-config/status")); }
+    catch (error) { showError(error); }
+    finally { setIsLoading(false); }
+  }
+
+  async function testAIConfig(draft: { apiKey: string; baseUrl: string; model: string }) {
+    setIsSaving(true); setMessage(null);
+    try {
+      const result = await api<{ success: boolean; message: string; model: string; latencyMs: number | null }>("/api/ai-config/test", { method: "POST", body: JSON.stringify(draft) });
+      if (!result.success) throw new Error(result.message);
+      setMessage({ type: "success", text: `连接成功：${result.model}${result.latencyMs ? ` · ${result.latencyMs}ms` : ""}` });
+      return true;
+    } catch (error) { showError(error); return false; }
+    finally { setIsSaving(false); }
+  }
+
+  async function saveAIConfig(draft: { apiKey: string; baseUrl: string; model: string }) {
+    setIsSaving(true); setMessage(null);
+    try {
+      await api("/api/ai-config", { method: "PUT", body: JSON.stringify(draft) });
+      await loadAIStatus();
+      setMessage({ type: "success", text: "AI 大模型配置已保存并生效" });
+      return true;
+    } catch (error) { showError(error); return false; }
+    finally { setIsSaving(false); }
+  }
+
   async function login(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsLoading(true);
@@ -298,14 +330,27 @@ function App() {
       const payload = await api<{ users: AdminUser[] }>("/api/users");
       setUsers(payload.users);
       if (!selectedUserID && payload.users.length > 0) {
-        setSelectedUserID(payload.users[0].id);
-        setSelectedUserDetail(payload.users[0]);
+        const firstUser = payload.users[0];
+        setSelectedUserID(firstUser.id);
+        setSelectedUserDetail(firstUser);
+        const holdingPayload = await api<{ holdings: UserHolding[] }>(`/api/users/${firstUser.id}/holdings`);
+        setUserHoldings(holdingPayload.holdings);
       }
     } catch (error) {
       showError(error);
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function refreshUserManagement() {
+    const currentUserID = selectedUserID;
+    await loadUsers();
+    if (currentUserID) {
+      await loadUserDetail(currentUserID);
+    }
+    await loadUploadRecords();
+    setMessage({ type: "success", text: "用户、持仓和上传记录已刷新" });
   }
 
   async function loadUserDetail(userID: string) {
@@ -854,6 +899,17 @@ function App() {
               <small>{extremeDayMessages.length} 条文案</small>
             </span>
           </button>
+          <button
+            type="button"
+            className={activeSection === "ai" ? "active" : ""}
+            onClick={() => { setActiveSection("ai"); void loadAIStatus(); }}
+          >
+            <Sparkles size={18} />
+            <span>
+              <strong>AI 大模型</strong>
+              <small>{aiStatus?.configured ? "已配置" : "待配置"}</small>
+            </span>
+          </button>
         </nav>
 
         <button className="ghost-button" type="button" onClick={logout}>退出后台</button>
@@ -862,7 +918,9 @@ function App() {
       <section className="workspace">
         {message && <StatusMessage message={message} />}
 
-        {activeSection === "users" ? (
+        {activeSection === "ai" ? (
+          <AIModelManagementView status={aiStatus} isLoading={isLoading} isSaving={isSaving} onRefresh={loadAIStatus} onTest={testAIConfig} onSave={saveAIConfig} />
+        ) : activeSection === "users" ? (
           <UserManagementView
             users={filteredUsers}
             allUsers={users}
@@ -873,7 +931,7 @@ function App() {
             holdings={userHoldings}
             isLoading={isLoading}
             onSearchChange={setUserSearch}
-            onRefresh={loadUsers}
+            onRefresh={refreshUserManagement}
             onRefreshRecords={loadUploadRecords}
             onSelectUser={loadUserDetail}
             onCopyUserID={copyUserID}
@@ -964,6 +1022,33 @@ function App() {
       </section>
     </main>
   );
+}
+
+function AIModelManagementView({ status, isLoading, isSaving, onRefresh, onTest, onSave }: {
+  status: AIConfigStatus | null; isLoading: boolean; isSaving: boolean;
+  onRefresh: () => Promise<void>;
+  onTest: (draft: { apiKey: string; baseUrl: string; model: string }) => Promise<boolean>;
+  onSave: (draft: { apiKey: string; baseUrl: string; model: string }) => Promise<boolean>;
+}) {
+  const [apiKey, setAPIKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("https://open-gateway.anspire.cn/v6");
+  const [model, setModel] = useState("Doubao-Seed-2.0-lite");
+  const draft = { apiKey, baseUrl, model };
+  return <section className="management-page">
+    <div className="page-heading"><div><p className="eyebrow">AI Model</p><h2>AI 大模型</h2><p>配置持仓 AI 分析使用的模型渠道。密钥只发送到本地后台服务，不会返回浏览器。</p></div>
+      <button type="button" className="secondary-button" onClick={() => void onRefresh()} disabled={isLoading}>{isLoading ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}刷新状态</button>
+    </div>
+    <div className="detail-panel">
+      <div className="panel-title"><div><p className="eyebrow">Connection</p><h3>模型连接</h3><p>{status?.configured ? "主模型已经配置，可替换密钥或模型。" : "填写密钥并完成连接测试后启用。"}</p></div><StatusPill tone={status?.ready ? "success" : "warning"}>{status?.ready ? "服务就绪" : "待配置"}</StatusPill></div>
+      <div className="form-grid">
+        <label className="field full"><span>API Key</span><input type="password" autoComplete="new-password" value={apiKey} onChange={(event) => setAPIKey(event.target.value)} placeholder="输入新的模型 API Key" /><small>出于安全考虑，后台不会回显已保存的密钥。</small></label>
+        <label className="field"><span>API Base URL</span><input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} /></label>
+        <label className="field"><span>主模型</span><input value={model} onChange={(event) => setModel(event.target.value)} /></label>
+      </div>
+      <div className="modal-actions"><button type="button" className="secondary-button" disabled={isSaving || apiKey.length < 8} onClick={() => void onTest(draft)}>{isSaving ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}测试连接</button><button type="button" className="primary-button" disabled={isSaving || apiKey.length < 8} onClick={() => void onSave(draft)}>{isSaving ? <Loader2 className="spin" size={17} /> : <Save size={17} />}保存并启用</button></div>
+      {status?.models?.length ? <div className="readonly-grid"><DetailItem label="当前主模型" value={status.models.find((item) => item.isPrimary)?.model ?? status.models[0].model} /><DetailItem label="可用模型" value={`${status.models.length} 个`} /></div> : null}
+    </div>
+  </section>;
 }
 
 function UserManagementView({

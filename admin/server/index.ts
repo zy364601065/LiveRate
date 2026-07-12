@@ -120,6 +120,7 @@ loadLocalEnv();
 const supabaseUrl = requireEnv("SUPABASE_URL");
 const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 const adminPassword = requireEnv("ADMIN_PASSWORD");
+const aiServiceUrl = (process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 const port = Number(process.env.PORT ?? 5174);
 const bucketName = "stats-mood-gifs";
 const fullscreenAnimationBucketName = "stats-fullscreen-animations";
@@ -168,6 +169,61 @@ app.use("/api", (request, response, next) => {
   }
 
   next();
+});
+
+app.get("/api/ai-config/status", async (_request, response) => {
+  try {
+    const [setup, models] = await Promise.all([
+      fetchAI("/api/v1/system/config/setup/status"),
+      fetchAI("/api/v1/agent/models")
+    ]);
+    response.json({
+      configured: setup?.checks?.some((item: { key?: string; status?: string }) => item.key === "llm_primary" && item.status === "configured") ?? false,
+      ready: setup?.is_complete === true,
+      models: Array.isArray(models?.models) ? models.models.map((item: Record<string, unknown>) => ({ model: item.model, isPrimary: item.is_primary === true })) : []
+    });
+  } catch (error) { sendError(response, error); }
+});
+
+app.post("/api/ai-config/test", async (request, response) => {
+  try {
+    const apiKey = requireSecret(request.body?.apiKey, "API Key");
+    const baseUrl = validateURL(request.body?.baseUrl ?? "https://open-gateway.anspire.cn/v6");
+    const model = String(request.body?.model ?? "Doubao-Seed-2.0-lite").trim();
+    if (!model) throw new HttpError(400, "模型名称不能为空");
+    const result = await fetchAI("/api/v1/system/config/llm/test-channel", {
+      method: "POST",
+      body: JSON.stringify({ name: "anspire", protocol: "openai", base_url: baseUrl, api_key: apiKey, models: [model], enabled: true, timeout_seconds: 30, capability_checks: ["json"], use_saved_secret: false })
+    });
+    response.json({ success: result?.success === true, message: result?.message ?? "测试完成", model: result?.resolved_model ?? model, latencyMs: result?.latency_ms ?? null });
+  } catch (error) { sendError(response, error); }
+});
+
+app.put("/api/ai-config", async (request, response) => {
+  try {
+    const apiKey = requireSecret(request.body?.apiKey, "API Key");
+    const baseUrl = validateURL(request.body?.baseUrl ?? "https://open-gateway.anspire.cn/v6");
+    const model = String(request.body?.model ?? "Doubao-Seed-2.0-lite").trim();
+    if (!model) throw new HttpError(400, "模型名称不能为空");
+    const current = await fetchAI("/api/v1/system/config");
+    await fetchAI("/api/v1/system/config", {
+      method: "PUT",
+      body: JSON.stringify({
+        config_version: current.config_version,
+        mask_token: current.mask_token ?? "******",
+        reload_now: true,
+        items: [
+          { key: "LLM_CHANNELS", value: "anspire" },
+          { key: "LLM_ANSPIRE_ENABLED", value: "true" },
+          { key: "LLM_ANSPIRE_PROTOCOL", value: "openai" },
+          { key: "LLM_ANSPIRE_BASE_URL", value: baseUrl },
+          { key: "LLM_ANSPIRE_MODELS", value: model },
+          { key: "LLM_ANSPIRE_API_KEY", value: apiKey }
+        ]
+      })
+    });
+    response.json({ ok: true, configured: true, model, baseUrl });
+  } catch (error) { sendError(response, error); }
 });
 
 app.get("/api/modes", async (_request, response) => {
@@ -258,10 +314,18 @@ app.get("/api/users/:userID/holdings", async (request, response) => {
   try {
     const userID = requireUUID(String(request.params.userID), "用户 ID");
     const { data, error } = await supabase.from("user_holdings").select("*")
-      .eq("user_id", userID).is("deleted_at", null).order("data_timestamp", { ascending: false });
+      .eq("user_id", userID).order("data_timestamp", { ascending: false });
     if (error) throw error;
-    response.json({ holdings: (data ?? []) as HoldingRow[] });
-  } catch (error) { sendError(response, error); }
+    const allHoldings = (data ?? []) as HoldingRow[];
+    const activeHoldings = allHoldings.filter((holding) => holding.deleted_at === null);
+    console.info(
+      `[后台持仓] 查询完成：用户=${userID.slice(0, 8)}，总数=${allHoldings.length}，有效=${activeHoldings.length}，已删除=${allHoldings.length - activeHoldings.length}`
+    );
+    response.json({ holdings: activeHoldings });
+  } catch (error) {
+    console.error(`[后台持仓] 查询失败：用户=${String(request.params.userID).slice(0, 8)}，错误=`, error);
+    sendError(response, error);
+  }
 });
 
 app.patch("/api/users/:userID/holdings/:holdingID", async (request, response) => {
@@ -1137,6 +1201,36 @@ function requireEnv(key: string): string {
     throw new Error(`Missing ${key}. Please configure admin/.env.local`);
   }
   return value;
+}
+
+function requireSecret(value: unknown, label: string): string {
+  const normalized = String(value ?? "").trim();
+  if (normalized.length < 8 || normalized.length > 500) throw new HttpError(400, `${label} 格式不正确`);
+  return normalized;
+}
+
+function validateURL(value: unknown): string {
+  const normalized = String(value ?? "").trim().replace(/\/$/, "");
+  try {
+    const url = new URL(normalized);
+    if (url.protocol !== "https:" && url.hostname !== "127.0.0.1" && url.hostname !== "localhost") throw new Error();
+    return normalized;
+  } catch { throw new HttpError(400, "API 地址必须是有效的 HTTPS 地址"); }
+}
+
+async function fetchAI(path: string, init: RequestInit = {}): Promise<any> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 35_000);
+  try {
+    const response = await fetch(`${aiServiceUrl}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new HttpError(response.status, payload.detail ?? payload.message ?? payload.error ?? "AI 服务请求失败");
+    return payload;
+  } finally { clearTimeout(timeout); }
 }
 
 function loadLocalEnv(): void {

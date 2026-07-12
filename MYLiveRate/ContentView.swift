@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     private enum MainTab: Hashable {
         case rates
         case holdings
@@ -102,6 +103,7 @@ struct ContentView: View {
             await statsTrendMessageViewModel.loadMessages()
             await viewModel.syncStatUploadRecords()
             await viewModel.syncHoldings()
+            await viewModel.refreshPortfolioMarketData()
             await viewModel.refresh()
             evaluateBirthdayAnimationTrigger()
         }
@@ -111,6 +113,11 @@ struct ContentView: View {
         }
         .onChange(of: selectedTab) { _, _ in
             evaluateRateImportPrompt()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await viewModel.refreshPortfolioMarketData() }
+            }
         }
         .onChange(of: statsFullscreenAnimationViewModel.birthdayHomeAnimations) { _, _ in
             evaluateBirthdayAnimationTrigger()

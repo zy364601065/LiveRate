@@ -223,6 +223,66 @@ struct HoldingLiveStockQuote: Identifiable, Codable {
     var id: String { symbol }
 }
 
+enum PortfolioMarketSession: String, Codable {
+    case preMarket = "pre_market"
+    case regular
+    case afterHours = "after_hours"
+    case closed
+
+    var displayName: String {
+        switch self { case .preMarket: "盘前"; case .regular: "盘中"; case .afterHours: "盘后"; case .closed: "已收盘" }
+    }
+}
+
+struct PortfolioQuoteItem: Codable {
+    let symbol: String
+    let sessions: PortfolioSessionQuotes
+}
+
+struct PortfolioSessionQuotes: Codable {
+    let preMarket: PortfolioSessionQuote
+    let regular: PortfolioSessionQuote
+    let afterHours: PortfolioSessionQuote
+    let overnight: PortfolioSessionQuote
+    enum CodingKeys: String, CodingKey { case regular, overnight; case preMarket = "pre_market"; case afterHours = "after_hours" }
+
+    func quote(for session: PortfolioMarketSession) -> PortfolioSessionQuote? {
+        switch session { case .preMarket: preMarket; case .regular: regular; case .afterHours: afterHours; case .closed: afterHours.isAvailable ? afterHours : regular }
+    }
+}
+
+struct PortfolioSessionQuote: Codable {
+    let status: String
+    let price: Double?
+    let baselinePrice: Double?
+    let changeAmount: Double?
+    let changePercent: Double?
+    let provider: String?
+    let quoteAt: Date?
+    let isStale: Bool?
+    var isAvailable: Bool { status == "available" && price != nil }
+    enum CodingKeys: String, CodingKey {
+        case status, price, provider; case baselinePrice = "baseline_price"; case changeAmount = "change_amount"
+        case changePercent = "change_percent"; case quoteAt = "quote_at"; case isStale = "is_stale"
+    }
+}
+
+struct PortfolioQuoteResponse: Codable {
+    let session: PortfolioMarketSession
+    let refreshedAt: Date
+    let items: [PortfolioQuoteItem]
+    enum CodingKeys: String, CodingKey { case session, items; case refreshedAt = "refreshed_at" }
+}
+
+struct HoldingDailySettlement: Identifiable, Codable {
+    let id: UUID; let tradingDate: String; let regularPnL: Double; let regularPnLPercent: Double
+    let totalMarketValue: Double; let quoteAt: Date
+    enum CodingKeys: String, CodingKey {
+        case id; case tradingDate = "trading_date"; case regularPnL = "regular_pnl"
+        case regularPnLPercent = "regular_pnl_percent"; case totalMarketValue = "total_market_value"; case quoteAt = "quote_at"
+    }
+}
+
 enum TradingSessionFilter: String, CaseIterable, Identifiable {
     case all
     case overnight

@@ -4,10 +4,20 @@ const headers = { "content-type": "application/json" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers });
 type Session = "pre_market" | "regular" | "after_hours" | "overnight";
 type Quote = { status: "available" | "unavailable"; price?: number; baseline_price?: number; change_amount?: number; change_percent?: number; provider?: string; quote_at?: string; is_stale?: boolean };
+const QUOTE_STALE_AFTER_SECONDS = 180;
 
 function nyParts(date: Date) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
   return Object.fromEntries(parts.map((p) => [p.type, p.value]));
+}
+function nyDateKey(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+function isQuoteStale(timestamp: number, now = Date.now()) {
+  const age = now / 1000 - timestamp;
+  return age > QUOTE_STALE_AFTER_SECONDS || age < -60;
 }
 function currentSession(now = new Date()): Session | "closed" {
   const p = nyParts(now); if (["Sat", "Sun"].includes(p.weekday)) return "closed";
@@ -28,6 +38,8 @@ function bucket(date: Date): Session | null {
 async function yahooSessions(symbol: string): Promise<Record<Session, Quote>> {
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 7000);
   try {
+    const now = new Date();
+    const todayKey = nyDateKey(now);
     const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1m&range=1d&includePrePost=true`, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0 LiveRate/1.0" } });
     if (!response.ok) throw new Error(`Yahoo ${response.status}`);
     const result = (await response.json()).chart?.result?.[0]; const meta = result?.meta;
@@ -38,14 +50,17 @@ async function yahooSessions(symbol: string): Promise<Record<Session, Quote>> {
     const latest = new Map<Session, { price: number; timestamp: number }>();
     for (let i = 0; i < timestamps.length; i++) {
       const price = Number(closes[i]); if (!(price > 0)) continue;
-      const session = bucket(new Date(timestamps[i] * 1000)); if (session) latest.set(session, { price, timestamp: timestamps[i] });
+      const timestamp = timestamps[i];
+      const pointDate = new Date(timestamp * 1000);
+      if (nyDateKey(pointDate) !== todayKey) continue;
+      const session = bucket(pointDate); if (session) latest.set(session, { price, timestamp });
     }
     const output: Record<Session, Quote> = { pre_market: { status: "unavailable" }, regular: { status: "unavailable" }, after_hours: { status: "unavailable" }, overnight: { status: "unavailable" } };
     for (const session of ["pre_market", "regular", "after_hours"] as Session[]) {
       const point = latest.get(session); if (!point) continue;
       const baseline = session === "after_hours" ? regularClose : previousClose;
       if (!(baseline > 0)) continue; const change = point.price - baseline;
-      output[session] = { status: "available", price: point.price, baseline_price: baseline, change_amount: change, change_percent: change / baseline * 100, provider: "Yahoo", quote_at: new Date(point.timestamp * 1000).toISOString(), is_stale: false };
+      output[session] = { status: "available", price: point.price, baseline_price: baseline, change_amount: change, change_percent: change / baseline * 100, provider: "Yahoo", quote_at: new Date(point.timestamp * 1000).toISOString(), is_stale: isQuoteStale(point.timestamp, now.getTime()) };
     }
     return output;
   } finally { clearTimeout(timer); }

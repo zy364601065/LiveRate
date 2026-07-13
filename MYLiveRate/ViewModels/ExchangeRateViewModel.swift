@@ -223,11 +223,11 @@ final class ExchangeRateViewModel: ObservableObject {
         do {
             let response = try await holdingsSyncService.refreshPortfolioQuotes()
             portfolioMarketSession = response.session
-            portfolioQuoteAt = response.refreshedAt
             portfolioQuotesBySymbol = Dictionary(uniqueKeysWithValues: response.items.map { ($0.symbol, $0.sessions) })
             let activeQuotes = response.items.compactMap { $0.sessions.quote(for: response.session) }
             portfolioQuoteProvider = Array(Set(activeQuotes.compactMap(\.provider))).sorted().joined(separator: " / ")
             portfolioQuoteIsStale = activeQuotes.contains { $0.isStale == true }
+            portfolioQuoteAt = activeQuotes.compactMap(\.quoteAt).max() ?? response.refreshedAt
             var quantities: [String: Double] = [:]
             for record in holdingRecords {
                 guard let symbol = record.stockCode?.uppercased(), let quantity = record.quantity else { continue }

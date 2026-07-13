@@ -1,5 +1,5 @@
 {
-  "originHash" : "69b6fd0fb68a3870d7fbbfca258d683680862f5cc8ea800149cdbab7c7ed1408",
+  "originHash" : "91a8d75a8946167dc83026895987111fb44ba1a34aa2e937279e6d1101688e14",
   "pins" : [
     {
       "identity" : "alamofire",
@@ -69,8 +69,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/supabase/supabase-swift",
       "state" : {
-        "revision" : "e5020ae5a1d01c46cc60fb5eb01157666d7214b6",
-        "version" : "2.48.0"
+        "revision" : "27f31bfb7be836a33c89f6636ef69a2cfff9a3fd",
+        "version" : "2.51.0"
       }
     },
     {
@@ -123,8 +123,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/xctest-dynamic-overlay",
       "state" : {
-        "revision" : "401bf70d95bfe8db2a1dc619f9e175a85c089321",
-        "version" : "1.10.1"
+        "revision" : "8f6abcf4c8950e2679d5b2fee4ca284fd7c34886",
+        "version" : "1.11.0"
       }
     }
   ],

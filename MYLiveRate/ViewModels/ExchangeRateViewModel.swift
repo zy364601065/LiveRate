@@ -50,7 +50,7 @@ final class ExchangeRateViewModel: ObservableObject {
         amountText = loadPersistedAmountText()
         uploadRecords = localRecordsStore.fetchUploadRecords()
         latestUploadThumbnailData = UserDefaults.standard.data(forKey: latestThumbnailStorageKey)
-        holdingRecords = localRecordsStore.fetchHoldingRecords()
+        holdingRecords = sortHoldingRecords(localRecordsStore.fetchHoldingRecords())
     }
 
     var targetCurrencies: [Currency] {
@@ -198,7 +198,7 @@ final class ExchangeRateViewModel: ObservableObject {
                 print("[持仓同步] 本地为空，已读取云端记录：数量=\(remoteRows.count)")
                 let recovered = remoteRows.filter { $0.deletedAt == nil }.map(\.record)
                 if !recovered.isEmpty {
-                    holdingRecords = recovered.sorted { $0.timestamp > $1.timestamp }
+                    holdingRecords = sortHoldingRecords(recovered)
                     localRecordsStore.mergeHoldingRecords(recovered)
                 }
             }
@@ -511,7 +511,7 @@ final class ExchangeRateViewModel: ObservableObject {
             }
         }
 
-        holdingRecords = Array(mergedByKey.values).sorted { $0.timestamp > $1.timestamp }
+        holdingRecords = sortHoldingRecords(Array(mergedByKey.values))
         pendingHoldingUpsertIDs.formUnion(holdingRecords.map(\.id))
         localRecordsStore.mergeHoldingRecords(records)
     }
@@ -558,7 +558,7 @@ final class ExchangeRateViewModel: ObservableObject {
             holdingPnLPercent: old.holdingPnLPercent
         )
         holdingRecords[index] = updatedRecord
-        holdingRecords.sort { $0.timestamp > $1.timestamp }
+        holdingRecords = sortHoldingRecords(holdingRecords)
         localRecordsStore.updateHoldingIdentity(id: id, newName: trimmedName, newCode: normalizedCode)
         pendingHoldingUpsertIDs.insert(id)
         Task {

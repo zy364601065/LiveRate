@@ -183,7 +183,7 @@ final class LocalRecordsStore {
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
         )
         let entities = (try? context.fetch(descriptor)) ?? []
-        return entities.map(\.dto)
+        return sortHoldingRecords(entities.map(\.dto))
     }
 
     func mergeHoldingRecords(_ records: [HoldingRecord]) {
@@ -194,7 +194,7 @@ final class LocalRecordsStore {
             mergedByKey[holdingKey(for: record)] = record
         }
 
-        let merged = Array(mergedByKey.values).sorted { $0.timestamp > $1.timestamp }
+        let merged = sortHoldingRecords(Array(mergedByKey.values))
         replaceAllHoldingRecords(with: merged)
     }
 
@@ -251,7 +251,7 @@ final class LocalRecordsStore {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let records = (try? decoder.decode([HoldingRecord].self, from: data)) ?? []
-        return deduplicated(records).sorted { $0.timestamp > $1.timestamp }
+        return sortHoldingRecords(deduplicated(records))
     }
 
     private func deduplicated<T: Identifiable>(_ records: [T]) -> [T] where T.ID: Hashable {
@@ -266,7 +266,7 @@ final class LocalRecordsStore {
             context.delete(entity)
         }
 
-        for record in records {
+        for record in sortHoldingRecords(records) {
             context.insert(HoldingRecordEntity(record: record))
         }
         saveContext()

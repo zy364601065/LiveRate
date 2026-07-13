@@ -9,6 +9,7 @@ struct HoldingsTabView: View {
     @State private var draftName = ""
     @State private var draftCode = ""
     @State private var analysisRecord: HoldingRecord?
+    @State private var isShowingCalculator = false
     private let pageBackgroundTop = Color(uiColor: UIColor { trait in
         trait.userInterfaceStyle == .dark
             ? UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
@@ -23,6 +24,20 @@ struct HoldingsTabView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    toolsSection
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 6, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+
+                Section {
+                    PortfolioPositionSummaryView(viewModel: viewModel)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+
                 if viewModel.holdingRecords.isEmpty {
                     Section {
                         holdingsEmptyState
@@ -31,10 +46,6 @@ struct HoldingsTabView: View {
                             .listRowSeparator(.hidden)
                     }
                 } else {
-                    Section {
-                        compactUploadEntry
-                    }
-
                     Section("持仓列表（左滑可删除）") {
                         ForEach(viewModel.holdingRecords) { record in
                             holdingCard(record)
@@ -56,6 +67,9 @@ struct HoldingsTabView: View {
             .background(pageBackground.ignoresSafeArea())
             .navigationTitle("持仓明细")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $isShowingCalculator) {
+                LeveragedTargetPriceCalculatorView(viewModel: viewModel)
+            }
         }
         .sheet(item: $analysisRecord) { record in
             StockAnalysisView(record: record)
@@ -70,59 +84,185 @@ struct HoldingsTabView: View {
         )
     }
 
-    private var compactUploadEntry: some View {
+    private var toolsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PhotosPicker(selection: $selectedHoldingPhotoItem, matching: .images) {
-                Label("上传持仓截图", systemImage: "chart.bar.doc.horizontal")
+            HStack {
+                Text("常用工具")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Text("快捷入口")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
-            recognitionStatus
+            HStack(alignment: .top, spacing: 10) {
+                Button {
+                    isShowingCalculator = true
+                } label: {
+                    leveragedCalculatorEntry
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+
+                uploadEntry
+                    .frame(maxWidth: .infinity)
+            }
         }
+        .padding(.horizontal, 2)
+    }
+
+    private var leveragedCalculatorEntry: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(Color.orange.opacity(0.16))
+                    Image(systemName: "function")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.orange)
+                }
+                .frame(width: 40, height: 40)
+                .accessibilityHidden(true)
+
+                Spacer(minLength: 4)
+
+                Text("2×")
+                    .font(.caption2.weight(.bold).monospacedDigit())
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.12), in: Capsule())
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("目标价换算")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text("估算 2 倍做多价格")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .background(
+            LinearGradient(
+                colors: [Color(.systemBackground), Color.orange.opacity(0.065)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.orange.opacity(0.16), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("目标价换算")
+        .accessibilityHint("进入二级页面，估算正股目标价对应的 2 倍做多价格")
+    }
+
+    private var uploadEntry: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(Color.blue.opacity(0.12))
+                    Image(systemName: "doc.viewfinder")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+                .frame(width: 40, height: 40)
+                .accessibilityHidden(true)
+
+                Spacer(minLength: 4)
+
+                PhotosPicker(selection: $selectedHoldingPhotoItem, matching: .images) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(.blue, in: Circle())
+                }
+                .disabled(viewModel.isRecognizingHolding)
+                .accessibilityLabel("选择持仓截图")
+                .accessibilityHint("从照片中选择券商持仓截图并自动识别")
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("上传持仓截图")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(viewModel.isRecognizingHolding ? "正在识别..." : "自动识别持仓数据")
+                    .font(.caption2)
+                    .foregroundStyle(viewModel.isRecognizingHolding ? .blue : .secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !viewModel.isRecognizingHolding, let message = viewModel.holdingMessage {
+                    Text(message)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .background(
+            LinearGradient(
+                colors: [Color(.systemBackground), Color.blue.opacity(0.045)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.blue.opacity(0.14), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private var holdingsEmptyState: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .fill(Color.orange.opacity(0.12))
-                    .frame(width: 104, height: 104)
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(width: 78, height: 78)
 
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color(.systemBackground))
-                    .frame(width: 68, height: 76)
+                    .frame(width: 54, height: 60)
                     .shadow(color: .black.opacity(0.08), radius: 12, y: 5)
 
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
             .accessibilityHidden(true)
 
             VStack(spacing: 9) {
-                Text("导入你的第一笔持仓")
-                    .font(.title2.weight(.bold))
+                Text("还没有持仓记录")
+                    .font(.headline.weight(.semibold))
                     .multilineTextAlignment(.center)
 
-                Text("上传券商持仓截图，自动识别股票、成本和盈亏数据。")
-                    .font(.subheadline)
+                Text("上传截图后，识别结果会显示在下面。")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            PhotosPicker(selection: $selectedHoldingPhotoItem, matching: .images) {
-                Label("选择持仓截图", systemImage: "photo.on.rectangle.angled")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 50)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.orange)
-            .accessibilityHint("从照片中选择券商持仓截图并自动识别")
-
-            recognitionStatus
-
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
                 emptyStateFeature(
                     icon: "text.viewfinder",
                     title: "自动识别",
@@ -137,27 +277,8 @@ struct HoldingsTabView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 30)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .shadow(color: .black.opacity(0.055), radius: 18, y: 7)
-    }
-
-    @ViewBuilder
-    private var recognitionStatus: some View {
-        if viewModel.isRecognizingHolding {
-            HStack(spacing: 8) {
-                ProgressView()
-                Text("正在识别持仓数据...")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .accessibilityElement(children: .combine)
-        } else if let message = viewModel.holdingMessage {
-            Text(message)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        .padding(.vertical, 20)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func emptyStateFeature(icon: String, title: String, description: String) -> some View {

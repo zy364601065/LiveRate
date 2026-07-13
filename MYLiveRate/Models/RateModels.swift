@@ -195,6 +195,29 @@ struct HoldingRecord: Identifiable, Codable {
     }
 }
 
+func sortHoldingRecords(_ records: [HoldingRecord]) -> [HoldingRecord] {
+    records.sorted { lhs, rhs in
+        switch (lhs.marketValue, rhs.marketValue) {
+        case let (left?, right?):
+            if left != right {
+                return left > right
+            }
+        case (.some, nil):
+            return true
+        case (nil, .some):
+            return false
+        case (nil, nil):
+            break
+        }
+
+        if lhs.timestamp != rhs.timestamp {
+            return lhs.timestamp > rhs.timestamp
+        }
+
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+}
+
 struct RateResponse: Decodable {
     let time_last_update_unix: TimeInterval
     let rates: [String: Double]

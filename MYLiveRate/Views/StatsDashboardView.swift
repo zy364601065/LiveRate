@@ -337,13 +337,6 @@ struct StatsDashboardView: View {
         return formatter
     }
 
-    private var timeFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_Hans_CN")
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter
-    }
-
     private var rows: [DailyAmountRow] {
         viewModel.dailyAmountRows(for: viewModel.statsDisplayCurrency)
     }
@@ -919,62 +912,6 @@ struct StatsDashboardView: View {
         return rows.filter { calendar.isDate($0.day, equalTo: displayedMonth, toGranularity: .month) }
     }
 
-    private var currentMonthNetAssetRows: [DailyAmountRow] {
-        currentMonthRows.sorted {
-            if marketCalendar.isDate($0.day, inSameDayAs: $1.day) {
-                return $0.sourceTime < $1.sourceTime
-            }
-            return $0.day < $1.day
-        }
-    }
-
-    private var currentMonthHighDaysCount: Int {
-        var highestAsset: Double?
-        var highDays = 0
-
-        for row in currentMonthNetAssetRows {
-            if let currentHighest = highestAsset {
-                if row.convertedAmount > currentHighest {
-                    highDays += 1
-                    highestAsset = row.convertedAmount
-                }
-            } else {
-                highDays = 1
-                highestAsset = row.convertedAmount
-            }
-        }
-
-        return highDays
-    }
-
-    private var currentMonthMaxDrawdownStat: (amount: Double, percent: Double)? {
-        let assetRows = currentMonthNetAssetRows
-        guard assetRows.count >= 2 else { return nil }
-
-        var peak = assetRows[0].convertedAmount
-        var maxDrawdownAmount = 0.0
-        var maxDrawdownPercent = 0.0
-
-        for row in assetRows.dropFirst() {
-            let asset = row.convertedAmount
-            if asset > peak {
-                peak = asset
-                continue
-            }
-
-            guard peak != 0 else { continue }
-            let drawdownAmount = asset - peak
-            let drawdownPercent = drawdownAmount / abs(peak) * 100
-            if drawdownPercent < maxDrawdownPercent {
-                maxDrawdownAmount = drawdownAmount
-                maxDrawdownPercent = drawdownPercent
-            }
-        }
-
-        guard maxDrawdownPercent < 0 else { return nil }
-        return (amount: maxDrawdownAmount, percent: maxDrawdownPercent)
-    }
-
     private func calendarMood(for date: Date) -> KeyStatMood? {
         guard let amount = amountValue(for: date) else {
             return nil
@@ -1200,26 +1137,11 @@ struct StatsDashboardView: View {
             return ("本月vs上月", "\(deltaText) / \(percentText)", tone)
         }()
 
-        let highDays: (String, String, Color) = {
-            let count = currentMonthHighDaysCount
-            let tone: Color = count > 0 ? positiveColor : .secondary
-            return ("本月", "\(count)天", tone)
-        }()
-
-        let drawdown: (String, String, Color) = {
-            guard let stat = currentMonthMaxDrawdownStat else {
-                return ("本月", "--", .secondary)
-            }
-            return ("本月", "\(compactAmountText(stat.amount)) / \(percentText(stat.percent))", negativeColor)
-        }()
-
         let rawItems = [
             KeyStatItem(title: "最大盈利日", day: profit.0, amount: profit.1, tone: positiveColor),
             KeyStatItem(title: "最大亏损日", day: loss.0, amount: loss.1, tone: negativeColor),
             KeyStatItem(title: "胜率", day: winRate.0, amount: winRate.1, tone: winRate.2),
-            KeyStatItem(title: "环比变化", day: monthVsMonth.0, amount: monthVsMonth.1, tone: monthVsMonth.2),
-            KeyStatItem(title: "资产创新高天数", day: highDays.0, amount: highDays.1, tone: highDays.2),
-            KeyStatItem(title: "最大回撤", day: drawdown.0, amount: drawdown.1, tone: drawdown.2)
+            KeyStatItem(title: "环比变化", day: monthVsMonth.0, amount: monthVsMonth.1, tone: monthVsMonth.2)
         ]
 
         guard hideStatsNumbers else { return rawItems }
@@ -1266,49 +1188,6 @@ struct StatsDashboardView: View {
         return viewModel.formatAmount(summaryMainAmount, currency: viewModel.statsDisplayCurrency)
     }
 
-    private var totalPositionUSD: Double? {
-        let values = viewModel.holdingRecords.compactMap(\.marketValue)
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +)
-    }
-
-    private var totalTodayPnLUSD: Double? {
-        let values = viewModel.holdingRecords.compactMap(\.todayPnL)
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +)
-    }
-
-    private var totalPositionValue: Double? {
-        guard let totalPositionUSD else { return nil }
-        return viewModel.convertedFromUSD(totalPositionUSD, to: viewModel.statsDisplayCurrency)
-    }
-
-    private var totalTodayPnLPercent: Double? {
-        if let regularPercent = portfolioMetrics(for: .regular).percent { return regularPercent }
-        guard let marketValue = totalPositionUSD,
-              let todayPnL = totalTodayPnLUSD else { return nil }
-        let previousCloseValue = marketValue - todayPnL
-        guard previousCloseValue > 0 else { return nil }
-        return todayPnL / previousCloseValue * 100
-    }
-
-    private var totalPositionAmountText: String {
-        guard !hideStatsNumbers else { return "******" }
-        guard let value = totalPositionValue else { return "--" }
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        let number = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
-        return "\(viewModel.statsDisplayCurrency.symbol)\(number)"
-    }
-
-    private var totalPositionPercentText: String {
-        guard !hideStatsNumbers else { return "--%" }
-        guard let value = totalTodayPnLPercent else { return "--%" }
-        return String(format: "(%+.2f%%)", value)
-    }
-
     private func portfolioQuote(for record: HoldingRecord, session: TradingSessionType) -> PortfolioSessionQuote? {
         guard let symbol = record.stockCode?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
               !symbol.isEmpty,
@@ -1338,13 +1217,6 @@ struct StatsDashboardView: View {
         }
         guard hasData, totalBaseline > 0 else { return (nil, nil) }
         return (totalChange, totalChange / totalBaseline * 100)
-    }
-
-    private var sessionMetricColumns: [GridItem] {
-        Array(
-            repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
-            count: horizontalSizeClass == .regular ? 3 : 1
-        )
     }
 
     private var currentWeekRange: (start: Date, end: Date) {
@@ -2568,41 +2440,6 @@ struct StatsDashboardView: View {
 
     private var summarySection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("总仓位")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(subtitleColor)
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(totalPositionAmountText)
-                            .font(.system(size: 25, weight: .bold, design: .rounded))
-                            .foregroundStyle(accentBlue)
-                            .monospacedDigit()
-                        Text(hideStatsNumbers ? "盘中/收盘 --%" : "盘中/收盘 \(totalPositionPercentText)")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(hideStatsNumbers ? subtitleColor : signedAmountColor(totalTodayPnLPercent ?? 0, zeroColor: subtitleColor))
-                            .monospacedDigit()
-                    }
-                    if let quoteAt = viewModel.portfolioQuoteAt {
-                        Text("更新于 \(timeFormatter.string(from: quoteAt))\(viewModel.portfolioQuoteIsStale ? " · 数据可能延迟" : "")")
-                            .font(.caption2)
-                            .foregroundStyle(subtitleColor)
-                    }
-                }
-                Spacer()
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("总仓位")
-            .accessibilityValue(hideStatsNumbers ? "资产数据已隐藏" : "\(totalPositionAmountText)，盘中或收盘盈亏 \(totalPositionPercentText)")
-
-            LazyVGrid(columns: sessionMetricColumns, alignment: .leading, spacing: 8) {
-                portfolioSessionMetric(title: "盘后", session: .afterHours)
-                portfolioSessionMetric(title: "夜盘", session: .overnight)
-                portfolioSessionMetric(title: "盘前", session: .preMarket)
-            }
-
-            Divider()
-
             HStack(alignment: .center) {
                 Text(summaryTitleText)
                     .font(.system(size: 21, weight: .bold, design: .rounded))
@@ -2628,51 +2465,6 @@ struct StatsDashboardView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(glassCardBackground(cornerRadius: 28))
-    }
-
-    private func portfolioSessionMetric(title: String, session: TradingSessionType) -> some View {
-        let metrics = portfolioMetrics(for: session)
-        let amount = metrics.pnl.flatMap { viewModel.convertedFromUSD($0, to: viewModel.statsDisplayCurrency) }
-        let valueColor = signedRuleColor(metrics.percent)
-        return HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(subtitleColor)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            if hideStatsNumbers {
-                Text("--%")
-                    .font(.system(.body, design: .rounded, weight: .bold))
-                    .foregroundStyle(subtitleColor)
-                    .monospacedDigit()
-            } else if let amount, let percent = metrics.percent {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(viewModel.formatAmount(amount, currency: viewModel.statsDisplayCurrency))
-                    Text(percentText(percent))
-                }
-                .font(.system(.body, design: .rounded, weight: .bold))
-                .foregroundStyle(valueColor)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            } else {
-                Text("--%")
-                    .font(.system(.body, design: .rounded, weight: .bold))
-                    .foregroundStyle(subtitleColor)
-                    .monospacedDigit()
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title)盈亏")
-        .accessibilityValue(
-            hideStatsNumbers
-                ? "资产数据已隐藏"
-                : amount.flatMap { amountValue in metrics.percent.map { "\(viewModel.formatAmount(amountValue, currency: viewModel.statsDisplayCurrency))，\(percentText($0))" } } ?? "无数据"
-        )
     }
 
     private var keyStatsSection: some View {
